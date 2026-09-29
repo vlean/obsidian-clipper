@@ -556,6 +556,9 @@ body.obsidian-highlighter-active {
 	-webkit-line-clamp: 3;
 	line-clamp: 3;
 	overflow: hidden;
+	// The layer is 0×0, so shrink-to-fit would collapse to one character per line
+	width: max-content;
+	min-width: 48px;
 	max-width: 260px;
 	padding: 5px 8px;
 	background: rgba(255, 233, 153, 0.92);
