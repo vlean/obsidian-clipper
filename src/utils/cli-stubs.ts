@@ -63,6 +63,7 @@ export const generalSettings: Settings = {
 		bilingualLayout: false,
 		usePublishedDate: false,
 		pathAsParent: false,
+		showClippedBadge: true,
 	},
 };
 

@@ -12,6 +12,7 @@ import {
 	OutlineConfig,
 	OutlineErrorKind,
 	getOutlineAuthInfo,
+	getOutlineDocument,
 	getOutlineDocumentUrl,
 	listOutlineCollections,
 } from './outline-client';
@@ -21,7 +22,8 @@ import { OutlineSaveMode, saveOutlineDocument, tracksSourceUrl } from './outline
 import { getOutlineDocumentMapping, setOutlineDocumentMapping } from './outline-documents-store';
 import { getOutlineDocState, updateOutlineDocState } from './outline-doc-state';
 import { OutlineImageStats, uploadOutlineImages } from './outline-images';
-import { OutlineCommentInput, OutlineCommentStats, syncOutlineComments } from './outline-comments';
+import { OutlineCommentInput, OutlineCommentStats, syncOutlineComments, syncOutlineNoteComments } from './outline-comments';
+import { updateClippedBadgesForUrl } from './outline-badge';
 
 const VALID_BEHAVIORS: Template['behavior'][] = ['create', 'append-specific', 'append-daily', 'prepend-specific', 'prepend-daily', 'overwrite'];
 
@@ -29,6 +31,7 @@ export const OUTLINE_ACTIONS = {
 	testConnection: 'outlineTestConnection',
 	saveDocument: 'outlineSaveDocument',
 	listCollections: 'outlineListCollections',
+	syncNotes: 'outlineSyncNotes',
 } as const;
 
 export interface OutlineFailure {
@@ -54,6 +57,18 @@ export type OutlineSaveDocumentResponse =
 		comments?: OutlineCommentStats;
 	}
 	| OutlineFailure;
+
+export type OutlineSyncNotesResponse =
+	| { success: true; url: string; comments: OutlineCommentStats }
+	| OutlineFailure;
+
+export interface OutlineSyncNotesRequest {
+	action: typeof OUTLINE_ACTIONS.syncNotes;
+	/** Page the notes belong to; used to find the mapped document */
+	sourceUrl?: string;
+	/** Highlight notes to reconcile as comments */
+	comments?: OutlineCommentInput[];
+}
 
 export interface OutlineSaveDocumentRequest {
 	action: typeof OUTLINE_ACTIONS.saveDocument;
@@ -211,6 +226,8 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 				title: document.title,
 				updatedAt: new Date().toISOString(),
 			});
+			// Show the "already clipped" badge on any open tab for this page
+			updateClippedBadgesForUrl(sourceUrl).catch(error => console.debug('Badge update failed:', error));
 		}
 
 		// Mirror the Obsidian flow: open the note unless "silent open" is enabled
@@ -221,6 +238,49 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 		return { success: true, id: document.id, title: document.title, url, mode, images, comments };
 	} catch (error) {
 		console.error('Failed to save Outline document:', error);
+		return toFailure(error);
+	}
+}
+
+/**
+ * Reconciles highlight notes as comments on an already-clipped document,
+ * without changing the document text. Fails with 'notFound' when the page was
+ * never clipped or the document no longer exists.
+ */
+export async function handleOutlineSyncNotes(request: OutlineSyncNotesRequest): Promise<OutlineSyncNotesResponse> {
+	try {
+		const { settings, config } = await loadOutlineState();
+		const sourceUrl = typeof request.sourceUrl === 'string' ? request.sourceUrl : '';
+		if (!sourceUrl) {
+			return { success: false, errorKind: 'notFound', error: 'No source URL' };
+		}
+		const mapping = await getOutlineDocumentMapping(sourceUrl, settings.baseUrl);
+		if (!mapping) {
+			return { success: false, errorKind: 'notFound', error: 'Page is not clipped to Outline' };
+		}
+
+		// The document may have been deleted on the server since it was clipped
+		const document = await getOutlineDocument(config, mapping.documentId);
+		if (!document) {
+			return { success: false, errorKind: 'notFound', error: 'Outline document no longer exists' };
+		}
+
+		const url = getOutlineDocumentUrl(settings.baseUrl, document.url);
+		const inputs = sanitizeCommentInputs(request.comments);
+		const state = await getOutlineDocState(document.id);
+		const result = await syncOutlineNoteComments(config, {
+			documentId: document.id,
+			inputs,
+			existing: state.comments,
+		});
+		await updateOutlineDocState(document.id, { comments: result.comments });
+		return {
+			success: true,
+			url,
+			comments: { created: result.created, anchored: result.anchored, failed: result.failed, removed: result.removed },
+		};
+	} catch (error) {
+		console.error('Failed to sync Outline notes:', error);
 		return toFailure(error);
 	}
 }
@@ -243,6 +303,8 @@ export function handleOutlineMessage(request: { action?: string } & Record<strin
 				return Promise.resolve({ success: false, errorKind: 'validation', error: 'Missing title or text' } satisfies OutlineFailure);
 			}
 			return handleOutlineSaveDocument(request as unknown as OutlineSaveDocumentRequest);
+		case OUTLINE_ACTIONS.syncNotes:
+			return handleOutlineSyncNotes(request as unknown as OutlineSyncNotesRequest);
 		default:
 			return null;
 	}

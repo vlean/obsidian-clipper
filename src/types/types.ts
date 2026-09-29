@@ -77,6 +77,8 @@ export interface OutlineSettings {
 	usePublishedDate: boolean;
 	/** Map the template's note location (a/b/c) to nested parent documents */
 	pathAsParent: boolean;
+	/** Show a badge on the toolbar icon when the current page is already clipped to Outline */
+	showClippedBadge: boolean;
 }
 
 export interface ReaderSettings {

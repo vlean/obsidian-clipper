@@ -121,6 +121,9 @@ export async function initializeOutlineSettings(): Promise<void> {
 	initializeSettingToggle('outline-path-parent-toggle', generalSettings.outline.pathAsParent, (checked) => {
 		saveOutlineSettings({ pathAsParent: checked });
 	});
+	initializeSettingToggle('outline-clipped-badge-toggle', generalSettings.outline.showClippedBadge, (checked) => {
+		saveOutlineSettings({ showClippedBadge: checked });
+	});
 	const frontmatterStyle = document.getElementById('outline-frontmatter-style') as HTMLSelectElement | null;
 	if (frontmatterStyle) {
 		frontmatterStyle.value = generalSettings.outline.frontmatterStyle;

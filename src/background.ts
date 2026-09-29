@@ -8,6 +8,7 @@ import { debugLog } from './utils/debug';
 import { incrementStat } from './utils/storage-utils';
 import { hasStoredHighlights } from './utils/url-utils';
 import { handleOutlineMessage } from './utils/outline-service';
+import { updateClippedBadgeForTab } from './utils/outline-badge';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
@@ -302,6 +303,22 @@ async function initialize() {
 			highlighterModeQueues.delete(tabId);
 			delete readerModeState[tabId];
 			contentScriptLoads.delete(tabId);
+		});
+
+		// Keep the "already clipped" toolbar badge in sync with the active tab.
+		// Storage reads only; the badge API is guarded for browsers without it.
+		browser.tabs.onActivated.addListener(async ({ tabId }) => {
+			try {
+				const tab = await browser.tabs.get(tabId);
+				await updateClippedBadgeForTab(tabId, tab.url);
+			} catch {
+				// Tab may have closed
+			}
+		});
+		browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+			if (changeInfo.status === 'complete' || typeof changeInfo.url === 'string') {
+				updateClippedBadgeForTab(tabId, changeInfo.url ?? tab.url);
+			}
 		});
 		
 		// Initialize context menu

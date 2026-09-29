@@ -25,7 +25,7 @@ import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i
 import { formatPropertyValue } from '../utils/shared';
 import { buildOutlineDocumentText, normalizeOutlineTitle } from '../utils/outline-markdown';
 import { getOutlineErrorMessageKey } from '../utils/outline-client';
-import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse } from '../utils/outline-service';
+import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse, OutlineSyncNotesResponse } from '../utils/outline-service';
 import { getOutlineDocumentMapping, OutlineDocumentMapping } from '../utils/outline-documents-store';
 import { isDailyBehavior, tracksSourceUrl, OutlineSaveMode } from '../utils/outline-sync';
 import { buildOutlineComments, CommentableHighlight } from '../utils/outline-comments';
@@ -1321,6 +1321,15 @@ function determineMainAction() {
 		}
 	};
 
+	// Offer "sync notes only" when the page is already clipped, comment sync is
+	// enabled, and there are notes to reconcile
+	const addSyncNotesAction = () => {
+		if (!outlineConfigured || !currentOutlineMapping) return;
+		if (!generalSettings.outline?.syncComments || !generalSettings.highlighterEnabled) return;
+		if (buildOutlineComments(currentHighlights, htmlToPlainText).length === 0) return;
+		addSecondaryAction(secondaryActions, 'syncNotesToOutline', () => handleSyncOutlineNotes());
+	};
+
 	// Set up actions based on saved behavior
 	switch (loadedSettings.saveBehavior) {
 		case 'copyToClipboard':
@@ -1329,6 +1338,7 @@ function determineMainAction() {
 			// Add direct actions to secondary
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addOutlineAction();
+			addSyncNotesAction();
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 			break;
 		case 'saveFile':
@@ -1337,6 +1347,7 @@ function determineMainAction() {
 			// Add direct actions to secondary
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addOutlineAction();
+			addSyncNotesAction();
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			break;
 		case 'addToOutline':
@@ -1346,6 +1357,7 @@ function determineMainAction() {
 			if (outlineUpdates) {
 				addSecondaryAction(secondaryActions, 'saveAsNewOutlineDocument', () => handleClipOutline({ forceCreate: true }));
 			}
+			addSyncNotesAction();
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
@@ -1355,6 +1367,7 @@ function determineMainAction() {
 			mainButton.onclick = () => handleClipObsidian();
 			// Add direct actions to secondary
 			addOutlineAction();
+			addSyncNotesAction();
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 	}
@@ -1462,8 +1475,87 @@ async function refreshOutlineMapping(pageUrl: string): Promise<void> {
 			currentOutlineMapping = mapping;
 			determineMainAction();
 		}
+		// The title/url can change even when the document id is stable
+		currentOutlineMapping = mapping;
+		renderOutlineClippedRow();
 	} catch (error) {
 		console.error('Failed to read Outline document mapping:', error);
+	}
+}
+
+/** Shows a compact "already clipped" row linking to the mapped Outline document. */
+function renderOutlineClippedRow(): void {
+	const row = document.getElementById('outline-clipped-row') as HTMLAnchorElement | null;
+	const text = document.getElementById('outline-clipped-text');
+	if (!row || !text) return;
+	const mapping = currentOutlineMapping;
+	if (!mapping || !mapping.url) {
+		row.style.display = 'none';
+		return;
+	}
+	text.textContent = getMessage('outlineAlreadyClipped', mapping.title || mapping.url);
+	row.href = mapping.url;
+	row.setAttribute('aria-label', getMessage('outlineAlreadyClipped', mapping.title || mapping.url));
+	row.style.display = 'flex';
+	row.onclick = (event) => {
+		event.preventDefault();
+		browser.tabs.create({ url: mapping.url }).catch(error => console.error('Failed to open Outline document:', error));
+	};
+	initializeIcons(row);
+}
+
+/** Reconciles the current page's highlight notes as Outline comments (no text change). */
+async function handleSyncOutlineNotes(): Promise<void> {
+	if (!currentOutlineMapping || outlineSaveInProgress) return;
+	const clipButton = document.getElementById('clip-btn') as HTMLButtonElement | null;
+	const tabInfo = await getCurrentTabInfo();
+	const comments = buildOutlineComments(currentHighlights, htmlToPlainText);
+	if (comments.length === 0) return;
+
+	const originalButtonText = clipButton?.textContent ?? '';
+	outlineSaveInProgress = true;
+	if (clipButton) {
+		clipButton.disabled = true;
+		clipButton.textContent = getMessage('syncingOutlineNotes');
+	}
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: OUTLINE_ACTIONS.syncNotes,
+			sourceUrl: tabInfo.url,
+			comments,
+		}) as OutlineSyncNotesResponse | undefined;
+
+		if (!response || !response.success) {
+			const errorKey = getOutlineErrorMessageKey(response?.errorKind);
+			console.error('Outline notes sync failed:', response);
+			if (clipButton) {
+				clipButton.textContent = originalButtonText;
+				clipButton.disabled = false;
+			}
+			showError(errorKey);
+			return;
+		}
+
+		const { created, removed, failed } = response.comments;
+		if (clipButton) {
+			clipButton.textContent = failed > 0
+				? getMessage('outlineNotesSyncedWithWarnings', [String(created), String(failed)])
+				: getMessage('outlineNotesSynced', [String(created), String(removed)]);
+			// Restore the button after brief feedback; don't close the popup
+			setTimeout(() => {
+				clipButton.textContent = originalButtonText;
+				clipButton.disabled = false;
+			}, 1500);
+		}
+	} catch (error) {
+		console.error('Error syncing Outline notes:', error);
+		if (clipButton) {
+			clipButton.textContent = originalButtonText;
+			clipButton.disabled = false;
+		}
+		showError('outlineErrorGeneric');
+	} finally {
+		outlineSaveInProgress = false;
 	}
 }
 
@@ -1670,6 +1762,7 @@ function getActionIcon(actionType: string): string {
 		case 'addToOutline': return 'book-open';
 		case 'updateInOutline': return 'book-open';
 		case 'saveAsNewOutlineDocument': return 'file-plus';
+		case 'syncNotesToOutline': return 'rotate-cw';
 		default: return 'plus';
 	}
 }

@@ -16,6 +16,7 @@ import {
 	OutlineRequestOptions,
 	createOutlineComment,
 	deleteOutlineComment,
+	listOutlineComments,
 } from './outline-client';
 
 export const OUTLINE_COMMENT_MAX_LENGTH = 10000;
@@ -220,6 +221,80 @@ export async function syncOutlineComments(
 		comments = {};
 	}
 
+	const seen = new Set<string>();
+	for (let i = 0; i < params.inputs.length; i++) {
+		const input = params.inputs[i];
+		if (seen.has(input.key) || comments[input.key]) continue;
+		seen.add(input.key);
+		try {
+			const { id, anchored } = await createAnchoredComment(config, params.documentId, input, options);
+			comments[input.key] = id;
+			stats.created++;
+			if (anchored) stats.anchored++;
+		} catch (error) {
+			console.warn('Failed to create Outline comment:', error);
+			stats.failed++;
+			if (isFatal(error)) {
+				stats.failed += params.inputs.slice(i + 1).filter(rest => !comments[rest.key] && !seen.has(rest.key)).length;
+				break;
+			}
+		}
+	}
+
+	return { ...stats, comments };
+}
+
+/**
+ * Syncs highlight notes to an existing document's comments WITHOUT touching the
+ * document text (used by "sync notes only"). Creates comments for notes not yet
+ * posted, and prunes comments whose note was edited or removed — but never a
+ * comment that has replies. Reply detection lists the document's comments and
+ * skips deleting any id that is another comment's `parentCommentId`.
+ */
+export async function syncOutlineNoteComments(
+	config: OutlineConfig,
+	params: {
+		documentId: string;
+		inputs: OutlineCommentInput[];
+		/** Comments previously created for this document (note key → comment id) */
+		existing: Record<string, string>;
+	},
+	options?: OutlineRequestOptions,
+): Promise<SyncOutlineCommentsResult> {
+	const stats: OutlineCommentStats = { created: 0, anchored: 0, failed: 0, removed: 0 };
+	const comments = { ...params.existing };
+
+	// Prune notes that are no longer present (edited/removed), keeping replies safe
+	const wantedKeys = new Set(params.inputs.map(input => input.key));
+	const staleKeys = Object.keys(comments).filter(key => !wantedKeys.has(key));
+	if (staleKeys.length > 0) {
+		let commentsWithReplies = new Set<string>();
+		try {
+			const records = await listOutlineComments(config, params.documentId, options);
+			commentsWithReplies = new Set(
+				records.map(record => record.parentCommentId).filter((id): id is string => Boolean(id)),
+			);
+		} catch (error) {
+			// Can't confirm replies: skip pruning rather than risk deleting a reply thread
+			console.warn('Failed to list Outline comments; skipping prune:', error);
+			staleKeys.length = 0;
+		}
+		for (const key of staleKeys) {
+			const commentId = comments[key];
+			if (commentsWithReplies.has(commentId)) continue;
+			try {
+				if (await deleteOutlineComment(config, commentId, options)) stats.removed++;
+				delete comments[key];
+			} catch (error) {
+				console.warn('Failed to delete stale Outline comment:', commentId, error);
+				if (isFatal(error)) return { ...stats, comments };
+				// Non-fatal: drop the mapping so we stop trying to reconcile it
+				delete comments[key];
+			}
+		}
+	}
+
+	// Create only notes we haven't posted yet
 	const seen = new Set<string>();
 	for (let i = 0; i < params.inputs.length; i++) {
 		const input = params.inputs[i];

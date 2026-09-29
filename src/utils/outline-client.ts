@@ -421,6 +421,47 @@ export async function deleteOutlineComment(
 	}
 }
 
+export interface OutlineCommentRecord {
+	id: string;
+	/** Set when this comment is a reply to another comment */
+	parentCommentId?: string;
+}
+
+const COMMENTS_PAGE_SIZE = 100;
+const COMMENTS_MAX_PAGES = 10;
+
+/**
+ * Lists all comments on a document (paginated). Used to detect which comments
+ * have replies, so sync never deletes a comment someone replied to.
+ */
+export async function listOutlineComments(
+	config: OutlineConfig,
+	documentId: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineCommentRecord[]> {
+	const comments: OutlineCommentRecord[] = [];
+	for (let page = 0; page < COMMENTS_MAX_PAGES; page++) {
+		const result = await outlineRequest<{ data?: Array<{ id?: string; parentCommentId?: string | null }> }>(
+			config,
+			'comments.list',
+			{ documentId, limit: COMMENTS_PAGE_SIZE, offset: page * COMMENTS_PAGE_SIZE },
+			options,
+		);
+		const items = Array.isArray(result.data) ? result.data : [];
+		for (const item of items) {
+			if (item && typeof item.id === 'string') {
+				const record: OutlineCommentRecord = { id: item.id };
+				if (typeof item.parentCommentId === 'string' && item.parentCommentId) {
+					record.parentCommentId = item.parentCommentId;
+				}
+				comments.push(record);
+			}
+		}
+		if (items.length < COMMENTS_PAGE_SIZE) break;
+	}
+	return comments;
+}
+
 export interface OutlineNavigationNode {
 	id: string;
 	title: string;

@@ -611,6 +611,14 @@
 	"outline": {
 		"message": "Outline"
 	},
+	"outlineAlreadyClipped": {
+		"message": "已在 Outline 中：$1",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"outlineApiKey": {
 		"message": "API 密钥"
 	},
@@ -711,6 +719,28 @@
 	"outlineNoCollections": {
 		"message": "未找到集合"
 	},
+	"outlineNotesSynced": {
+		"message": "批注已同步 · 新增 $1 条，移除 $2 条",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
+	"outlineNotesSyncedWithWarnings": {
+		"message": "批注已同步 · 新增 $1 条，失败 $2 条",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
 	"outlineParagraphSpacing": {
 		"message": "段落之间留空"
 	},
@@ -737,6 +767,12 @@
 	},
 	"outlineSelectCollection": {
 		"message": "选择集合"
+	},
+	"outlineShowClippedBadge": {
+		"message": "为已剪藏的页面显示标记"
+	},
+	"outlineShowClippedBadgeDescription": {
+		"message": "当前页面已剪藏到 Outline 时，在工具栏图标上显示一个对勾标记。"
 	},
 	"outlineSyncComments": {
 		"message": "批注同步为评论"
@@ -1189,6 +1225,12 @@
 	},
 	"specificNoteName": {
 		"message": "特定笔记名称"
+	},
+	"syncingOutlineNotes": {
+		"message": "正在同步批注…"
+	},
+	"syncNotesToOutline": {
+		"message": "同步批注到 Outline"
 	},
 	"systemDefault": {
 		"message": "系统默认"

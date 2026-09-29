@@ -20,6 +20,7 @@ export const DEFAULT_OUTLINE_SETTINGS: OutlineSettings = {
 	bilingualLayout: true,
 	usePublishedDate: false,
 	pathAsParent: false,
+	showClippedBadge: true,
 };
 
 const FRONTMATTER_STYLES: OutlineSettings['frontmatterStyle'][] = ['table', 'callout', 'code'];
@@ -50,6 +51,7 @@ export function sanitizeOutlineSettings(raw: unknown): OutlineSettings {
 		bilingualLayout: typeof data.bilingualLayout === 'boolean' ? data.bilingualLayout : DEFAULT_OUTLINE_SETTINGS.bilingualLayout,
 		usePublishedDate: typeof data.usePublishedDate === 'boolean' ? data.usePublishedDate : DEFAULT_OUTLINE_SETTINGS.usePublishedDate,
 		pathAsParent: typeof data.pathAsParent === 'boolean' ? data.pathAsParent : DEFAULT_OUTLINE_SETTINGS.pathAsParent,
+		showClippedBadge: typeof data.showClippedBadge === 'boolean' ? data.showClippedBadge : DEFAULT_OUTLINE_SETTINGS.showClippedBadge,
 	};
 }
 

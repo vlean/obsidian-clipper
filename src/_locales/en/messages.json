@@ -611,6 +611,14 @@
 	"outline": {
 		"message": "Outline"
 	},
+	"outlineAlreadyClipped": {
+		"message": "Already in Outline: $1",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"outlineApiKey": {
 		"message": "API key"
 	},
@@ -711,6 +719,28 @@
 	"outlineNoCollections": {
 		"message": "No collections found"
 	},
+	"outlineNotesSynced": {
+		"message": "Notes synced · $1 added, $2 removed",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
+	"outlineNotesSyncedWithWarnings": {
+		"message": "Notes synced · $1 added, $2 failed",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
 	"outlineParagraphSpacing": {
 		"message": "Add space between paragraphs"
 	},
@@ -737,6 +767,12 @@
 	},
 	"outlineSelectCollection": {
 		"message": "Select a collection"
+	},
+	"outlineShowClippedBadge": {
+		"message": "Show a badge on already clipped pages"
+	},
+	"outlineShowClippedBadgeDescription": {
+		"message": "Show a checkmark on the toolbar icon when the current page has already been clipped to Outline."
 	},
 	"outlineSyncComments": {
 		"message": "Sync highlight notes as comments"
@@ -1189,6 +1225,12 @@
 	},
 	"specificNoteName": {
 		"message": "Specific note name"
+	},
+	"syncingOutlineNotes": {
+		"message": "Syncing notes…"
+	},
+	"syncNotesToOutline": {
+		"message": "Sync notes to Outline"
 	},
 	"systemDefault": {
 		"message": "System"
