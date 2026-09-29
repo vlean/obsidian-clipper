@@ -66,6 +66,7 @@ export const generalSettings: Settings = {
 		showClippedBadge: true,
 		starOnClip: false,
 		showRelatedDocuments: true,
+		excerptHighlight: true,
 	},
 };
 

@@ -83,6 +83,8 @@ export interface OutlineSettings {
 	starOnClip: boolean;
 	/** Look up documents with matching titles and show them in the popup before clipping */
 	showRelatedDocuments: boolean;
+	/** After excerpting a selection to the daily note, also highlight it on the page */
+	excerptHighlight: boolean;
 }
 
 export interface ReaderSettings {

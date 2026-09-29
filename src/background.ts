@@ -5,9 +5,11 @@ import { TextHighlightData } from './utils/highlighter';
 import { debounce } from './utils/debounce';
 import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
-import { incrementStat } from './utils/storage-utils';
+import { incrementStat, OUTLINE_API_KEY_STORAGE_KEY, sanitizeOutlineSettings } from './utils/storage-utils';
 import { hasStoredHighlights } from './utils/url-utils';
-import { handleOutlineMessage } from './utils/outline-service';
+import { handleOutlineMessage, OUTLINE_ACTIONS, isOutlineConfigured } from './utils/outline-service';
+import { handleOutlineExcerptToDaily, OutlineExcerptRequest, OutlineExcerptResponse } from './utils/outline-excerpt';
+import { getOutlineErrorMessageKey } from './utils/outline-client';
 import { updateClippedBadgeForTab } from './utils/outline-badge';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
@@ -117,6 +119,30 @@ let highlighterModeState: { [tabId: number]: boolean } = {};
 let readerModeState: { [tabId: number]: boolean } = {};
 let hasHighlights = false;
 let isContextMenuCreating = false;
+
+// Whether Outline is configured enough to clip to it: an instance URL, a
+// default collection, and an API key present in local storage. Cached so the
+// context-menu rebuild (which runs often) doesn't hit storage every time; kept
+// fresh by the storage.onChanged listener below.
+let outlineConfigured = false;
+
+// Reads storage and updates the cached `outlineConfigured` flag. The API key is
+// only checked for presence; its value never leaves this function.
+async function refreshOutlineConfigured(): Promise<boolean> {
+	try {
+		const [syncData, localData] = await Promise.all([
+			browser.storage.sync.get('outline_settings'),
+			browser.storage.local.get(OUTLINE_API_KEY_STORAGE_KEY),
+		]);
+		const settings = sanitizeOutlineSettings(syncData.outline_settings);
+		const apiKey = localData[OUTLINE_API_KEY_STORAGE_KEY];
+		outlineConfigured = isOutlineConfigured(settings, typeof apiKey === 'string' ? apiKey : '');
+	} catch (error) {
+		console.debug('Failed to read Outline configuration:', error);
+	}
+	return outlineConfigured;
+}
+
 let popupPorts: { [tabId: number]: browser.Runtime.Port } = {};
 const contentScriptLoads = new Map<number, { url: string; promise: Promise<void> }>();
 // Highlighter mode changes wait on lazy injection, so run them one at a time
@@ -419,6 +445,26 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 		const outlineResponse = handleOutlineMessage(request as { action?: string } & Record<string, unknown>);
 		if (outlineResponse) {
 			outlineResponse.then(sendResponse);
+			return true;
+		}
+
+		// Excerpt-to-daily needs the sender tab (for selection, highlight, toast),
+		// so it is handled here rather than in handleOutlineMessage. Stage 2's
+		// in-page toolbar sends this via runtime.sendMessage from the content script.
+		if (typedRequest.action === OUTLINE_ACTIONS.excerptToDaily) {
+			const excerptRequest = request as OutlineExcerptRequest;
+			const tabId = sender.tab?.id ?? typedRequest.tabId;
+			if (typeof tabId !== 'number') {
+				sendResponse({ success: false, errorKind: 'validation', error: 'No tab for excerpt' });
+				return true;
+			}
+			runOutlineExcerptToDaily(excerptRequest, tabId)
+				.then(sendResponse)
+				.catch((error) => sendResponse({
+					success: false,
+					errorKind: 'server',
+					error: error instanceof Error ? error.message : String(error),
+				}));
 			return true;
 		}
 
@@ -844,11 +890,7 @@ browser.commands.onCommand.addListener(async (command, tab) => {
 
 	if (command === 'quick_clip') {
 		if (tab?.id) {
-			openPopup();
-			setTimeout(() => {
-				browser.runtime.sendMessage({action: "triggerQuickClip"})
-					.catch(error => console.error("Failed to send quick clip message:", error));
-			}, 500);
+			openPopupAndTriggerClip();
 		}
 	}
 	if (command === "toggle_highlighter" && tab?.id) {
@@ -933,6 +975,21 @@ const debouncedUpdateContextMenu = debounce(async (tabId: number) => {
 			});
 		}
 
+		// Outline items appear only when Outline is configured (URL + collection + key).
+		await refreshOutlineConfigured();
+		if (outlineConfigured) {
+			menuItems.push({
+				id: 'clip-to-outline',
+				title: browser.i18n.getMessage('clipToOutline'),
+				contexts: ["page", "selection"]
+			});
+			menuItems.push({
+				id: 'excerpt-to-outline-daily',
+				title: browser.i18n.getMessage('excerptToOutlineDaily'),
+				contexts: ["selection"]
+			});
+		}
+
 		for (const item of menuItems) {
 			await browser.contextMenus.create(item);
 		}
@@ -964,8 +1021,144 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 		await ensureContentScriptLoadedInBackground(tab.id);
 	} else if (info.menuItemId === 'copy-markdown-to-clipboard' && tab && tab.id) {
 		await sendMessageToContentScript(tab.id, { action: "copyMarkdownToClipboard" });
+	} else if (info.menuItemId === 'clip-to-outline') {
+		await openPopupAndClipToOutline();
+	} else if (info.menuItemId === 'excerpt-to-outline-daily' && tab && tab.id) {
+		await runOutlineExcerptToDailyForTab(tab.id, info);
 	}
 });
+
+/**
+ * Opens the popup and asks it to run a clip once it is ready. Sending the
+ * message can race the popup's message listener, so instead of a fixed delay we
+ * retry a few times until the popup answers (or give up). `target` is passed
+ * through so callers can force an Outline clip. openPopup() can reject on
+ * browsers where it needs a user gesture or isn't available; that is logged and
+ * swallowed so there is no unhandled rejection.
+ */
+async function openPopupAndTriggerClip(target?: 'outline'): Promise<void> {
+	try {
+		await openPopup();
+	} catch (error) {
+		console.error('Failed to open popup for clip:', error);
+		return;
+	}
+	const message = target ? { action: 'triggerQuickClip', target } : { action: 'triggerQuickClip' };
+	// Retry until the popup's listener responds. 6 tries × 150ms ≈ 900ms, which
+	// comfortably covers the popup's startup while feeling instant when it's fast.
+	for (let attempt = 0; attempt < 6; attempt++) {
+		await new Promise(resolve => setTimeout(resolve, 150));
+		try {
+			const response = await browser.runtime.sendMessage(message);
+			if (response) return;
+		} catch {
+			// Popup not listening yet; keep retrying
+		}
+	}
+	console.warn('Quick clip message was not acknowledged by the popup');
+}
+
+async function openPopupAndClipToOutline(): Promise<void> {
+	await openPopupAndTriggerClip('outline');
+}
+
+/**
+ * Context-menu entry point for "Excerpt to today's Outline daily note". Reads
+ * the current selection from the page (falling back to the menu's
+ * `selectionText`), appends it to the daily note, and shows an in-page toast.
+ */
+async function runOutlineExcerptToDailyForTab(tabId: number, info: browser.Menus.OnClickData): Promise<void> {
+	await runOutlineExcerptToDaily({}, tabId, info?.selectionText || '');
+}
+
+/**
+ * Shared excerpt orchestration, reusable from the context menu and (Stage 2)
+ * from a content-script runtime message. Resolves the excerpt payload (asking
+ * the content script for the selection as Markdown when not supplied), appends
+ * it to the daily note via `handleOutlineExcerptToDaily`, optionally adds a
+ * highlight for the same selection (without turning on highlighter mode), and
+ * shows a toast with the result. Never throws.
+ */
+async function runOutlineExcerptToDaily(
+	payload: OutlineExcerptRequest,
+	tabId: number,
+	fallbackSelectionText = '',
+): Promise<OutlineExcerptResponse> {
+	const settings = sanitizeOutlineSettings((await browser.storage.sync.get('outline_settings')).outline_settings);
+
+	// Resolve the excerpt. Prefer an explicit payload (Stage 2 toolbar); otherwise
+	// ask the content script for the current selection as Markdown.
+	let selectionMarkdown = payload.selectionMarkdown ?? '';
+	let selectionText = payload.selectionText ?? fallbackSelectionText;
+	let pageTitle = payload.pageTitle ?? '';
+	let pageUrl = payload.pageUrl ?? '';
+
+	if (!selectionMarkdown && !selectionText.trim()) {
+		try {
+			await ensureContentScriptLoadedInBackground(tabId);
+			const result = await browser.tabs.sendMessage(tabId, { action: 'getSelectionMarkdown' }) as {
+				success?: boolean; markdown?: string; text?: string; title?: string; url?: string;
+			} | undefined;
+			if (result?.success) {
+				selectionMarkdown = result.markdown || '';
+				selectionText = (result.text || selectionText || '').trim();
+				pageTitle = pageTitle || result.title || '';
+				pageUrl = pageUrl || result.url || '';
+			}
+		} catch (error) {
+			// Restricted pages etc.: fall back to whatever selection text we have
+			console.debug('getSelectionMarkdown failed, falling back to selection text:', error);
+		}
+	}
+
+	// Fill page metadata defaults from the tab when still missing
+	if (!pageTitle || !pageUrl) {
+		try {
+			const tab = await browser.tabs.get(tabId);
+			pageTitle = pageTitle || tab.title || '';
+			pageUrl = pageUrl || tab.url || '';
+		} catch { /* ignore */ }
+	}
+
+	const response = await handleOutlineExcerptToDaily({
+		selectionMarkdown,
+		selectionText,
+		pageTitle,
+		pageUrl,
+		paragraphSpacing: settings.paragraphSpacing,
+	});
+
+	if (response.success) {
+		// Optionally add a highlight for the same selection, without flipping
+		// highlighter mode on (keepMenuState).
+		if (settings.excerptHighlight) {
+			try {
+				await sendMessageToContentScript(tabId, {
+					action: 'highlightSelection',
+					isActive: false,
+					keepMenuState: true,
+				});
+				hasHighlights = true;
+			} catch (error) {
+				console.debug('Excerpt highlight failed:', error);
+			}
+		}
+		await showToastInTab(tabId, browser.i18n.getMessage('outlineExcerptSaved', response.dailyTitle) || `${response.dailyTitle}`, 'info');
+	} else {
+		const key = getOutlineErrorMessageKey(response.errorKind);
+		const message = browser.i18n.getMessage(key) || response.error || 'Excerpt failed';
+		await showToastInTab(tabId, message, 'error');
+	}
+	return response;
+}
+
+async function showToastInTab(tabId: number, message: string, variant: 'info' | 'error'): Promise<void> {
+	try {
+		await sendMessageToContentScript(tabId, { action: 'showPageToast', message, variant });
+	} catch (error) {
+		console.debug('Failed to show page toast:', error);
+	}
+}
 
 browser.runtime.onInstalled.addListener(() => {
 	debouncedUpdateContextMenu(-1); // Use a dummy tabId for initial creation
@@ -1186,6 +1379,11 @@ browser.action.onClicked.addListener(async (tab) => {
 browser.storage.onChanged.addListener((changes, area) => {
 	if (area === 'sync' && changes.general_settings) {
 		updateActionPopup(parseOpenBehavior((changes.general_settings.newValue as Record<string, string>)?.openBehavior));
+	}
+	// Outline config affects which context-menu items are shown. The API key
+	// lives in local storage; its settings (URL/collection) live in sync.
+	if ((area === 'sync' && changes.outline_settings) || (area === 'local' && changes[OUTLINE_API_KEY_STORAGE_KEY])) {
+		refreshOutlineConfigured().then(() => debouncedUpdateContextMenu(-1));
 	}
 });
 

@@ -120,6 +120,9 @@
 			}
 		}
 	},
+	"clipToOutline": {
+		"message": "Clip to Outline"
+	},
 	"close": {
 		"message": "Close"
 	},
@@ -265,6 +268,9 @@
 	"error": {
 		"message": "Error"
 	},
+	"excerptToOutlineDaily": {
+		"message": "Excerpt to today's Outline daily note"
+	},
 	"export": {
 		"message": "Export"
 	},
@@ -372,6 +378,15 @@
 	"helpDescription": {
 		"message": "Learn how to use Web Clipper and get help troubleshooting."
 	},
+	"highlighter": {
+		"message": "Highlighter"
+	},
+	"highlighterOn": {
+		"message": "Highlighter"
+	},
+	"highlighterSettings": {
+		"message": "Highlighter"
+	},
 	"highlightInline": {
 		"message": "Highlight the page content"
 	},
@@ -384,20 +399,11 @@
 	"highlightPage": {
 		"message": "Highlight page"
 	},
-	"highlightSelection": {
-		"message": "Highlight"
-	},
-	"highlighter": {
-		"message": "Highlighter"
-	},
-	"highlighterOn": {
-		"message": "Highlighter"
-	},
-	"highlighterSettings": {
-		"message": "Highlighter"
-	},
 	"highlights": {
 		"message": "Highlights"
+	},
+	"highlightSelection": {
+		"message": "Highlight"
 	},
 	"highlightsImportSuccess": {
 		"message": "Imported $1 highlights.",
@@ -543,12 +549,6 @@
 	"noResults": {
 		"message": "No results found"
 	},
-	"noTemplates": {
-		"message": "No templates available. Please add a template in the settings."
-	},
-	"noUnusedProperties": {
-		"message": "No unused properties found."
-	},
 	"noteContent": {
 		"message": "Note content"
 	},
@@ -560,6 +560,9 @@
 	},
 	"noteLocationDescription": {
 		"message": "The folder or path of the note."
+	},
+	"noTemplates": {
+		"message": "No templates available. Please add a template in the settings."
 	},
 	"noteName": {
 		"message": "Note name"
@@ -580,6 +583,9 @@
 	},
 	"notesAboutPage": {
 		"message": "Notes about this page..."
+	},
+	"noUnusedProperties": {
+		"message": "No unused properties found."
 	},
 	"onlyHttpSupported": {
 		"message": "This page cannot be clipped. Only http and https URLs are supported."
@@ -735,6 +741,20 @@
 	"outlineErrorUnauthorized": {
 		"message": "The Outline API key is invalid or has been revoked."
 	},
+	"outlineExcerptHighlight": {
+		"message": "Highlight excerpts on the page"
+	},
+	"outlineExcerptHighlightDescription": {
+		"message": "When you excerpt a selection to today's daily note, also add it to the page highlights."
+	},
+	"outlineExcerptSaved": {
+		"message": "Excerpted to your $1 daily note",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"outlineFrontmatterCallout": {
 		"message": "Info block"
 	},
@@ -873,9 +893,6 @@
 	"pageCannotBeClipped": {
 		"message": "This page cannot be clipped."
 	},
-	"pageVariables": {
-		"message": "Page variables"
-	},
 	"pagesRead": {
 		"message": "page read"
 	},
@@ -887,6 +904,9 @@
 	},
 	"pagesSavedPlural": {
 		"message": "pages saved"
+	},
+	"pageVariables": {
+		"message": "Page variables"
 	},
 	"pasteJsonHere": {
 		"message": "Paste JSON here"
@@ -1068,6 +1088,9 @@
 	"readerFontPlaceholder": {
 		"message": "Press enter to add a font"
 	},
+	"readerFonts": {
+		"message": "Fonts"
+	},
 	"readerFontSetDefault": {
 		"message": "Set default"
 	},
@@ -1085,9 +1108,6 @@
 	},
 	"readerFontUnavailable": {
 		"message": "This font isn't available here — your browser may be blocking custom fonts."
-	},
-	"readerFonts": {
-		"message": "Fonts"
 	},
 	"readerFootnotes": {
 		"message": "Footnotes"
@@ -1346,6 +1366,9 @@
 	"templatePropertiesDescription": {
 		"message": "Properties to add to the top of the clipped note. Use variables to pre-populate data from the page."
 	},
+	"templatesHeading": {
+		"message": "Templates"
+	},
 	"templateTriggers": {
 		"message": "Template triggers"
 	},
@@ -1354,9 +1377,6 @@
 	},
 	"templateValid": {
 		"message": "Template syntax is valid"
-	},
-	"templatesHeading": {
-		"message": "Templates"
 	},
 	"thinking": {
 		"message": "thinking"

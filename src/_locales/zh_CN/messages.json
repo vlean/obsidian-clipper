@@ -120,6 +120,9 @@
 			}
 		}
 	},
+	"clipToOutline": {
+		"message": "剪藏到 Outline"
+	},
 	"close": {
 		"message": "关闭"
 	},
@@ -265,6 +268,9 @@
 	"error": {
 		"message": "错误"
 	},
+	"excerptToOutlineDaily": {
+		"message": "摘录到 Outline 今日日记"
+	},
 	"export": {
 		"message": "导出"
 	},
@@ -372,6 +378,15 @@
 	"helpDescription": {
 		"message": "了解如何使用 Web Clipper 并获取故障排除帮助。"
 	},
+	"highlighter": {
+		"message": "高亮"
+	},
+	"highlighterOn": {
+		"message": "高亮"
+	},
+	"highlighterSettings": {
+		"message": "高亮"
+	},
 	"highlightInline": {
 		"message": "高亮页面内容"
 	},
@@ -384,19 +399,10 @@
 	"highlightPage": {
 		"message": "高亮页面"
 	},
-	"highlightSelection": {
-		"message": "高亮"
-	},
-	"highlighter": {
-		"message": "高亮"
-	},
-	"highlighterOn": {
-		"message": "高亮"
-	},
-	"highlighterSettings": {
-		"message": "高亮"
-	},
 	"highlights": {
+		"message": "高亮"
+	},
+	"highlightSelection": {
 		"message": "高亮"
 	},
 	"highlightsImportSuccess": {
@@ -543,12 +549,6 @@
 	"noResults": {
 		"message": "未找到结果"
 	},
-	"noTemplates": {
-		"message": "没有可用的模板。请在设置中添加模板。"
-	},
-	"noUnusedProperties": {
-		"message": "未找到未使用的属性。"
-	},
 	"noteContent": {
 		"message": "笔记内容"
 	},
@@ -560,6 +560,9 @@
 	},
 	"noteLocationDescription": {
 		"message": "笔记的文件夹或路径。"
+	},
+	"noTemplates": {
+		"message": "没有可用的模板。请在设置中添加模板。"
 	},
 	"noteName": {
 		"message": "笔记名称"
@@ -580,6 +583,9 @@
 	},
 	"notesAboutPage": {
 		"message": "关于此页面的笔记..."
+	},
+	"noUnusedProperties": {
+		"message": "未找到未使用的属性。"
 	},
 	"onlyHttpSupported": {
 		"message": "无法剪藏此页面。仅支持 http 和 https URL。"
@@ -735,6 +741,20 @@
 	"outlineErrorUnauthorized": {
 		"message": "Outline API 密钥无效或已被撤销。"
 	},
+	"outlineExcerptHighlight": {
+		"message": "在页面上高亮摘录内容"
+	},
+	"outlineExcerptHighlightDescription": {
+		"message": "将选中内容摘录到今日日记时，同时将其加入页面高亮。"
+	},
+	"outlineExcerptSaved": {
+		"message": "已摘录到 $1 日记",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"outlineFrontmatterCallout": {
 		"message": "信息提示块"
 	},
@@ -873,9 +893,6 @@
 	"pageCannotBeClipped": {
 		"message": "无法剪藏此页面。"
 	},
-	"pageVariables": {
-		"message": "页面变量"
-	},
 	"pagesRead": {
 		"message": "页面已阅读"
 	},
@@ -887,6 +904,9 @@
 	},
 	"pagesSavedPlural": {
 		"message": "页面已保存"
+	},
+	"pageVariables": {
+		"message": "页面变量"
 	},
 	"pasteJsonHere": {
 		"message": "在此处粘贴 JSON"
@@ -1068,6 +1088,9 @@
 	"readerFontPlaceholder": {
 		"message": "按 Enter 添加字体"
 	},
+	"readerFonts": {
+		"message": "字体"
+	},
 	"readerFontSetDefault": {
 		"message": "设为默认"
 	},
@@ -1085,9 +1108,6 @@
 	},
 	"readerFontUnavailable": {
 		"message": "此字体在此处不可用 — 您的浏览器可能阻止了自定义字体。"
-	},
-	"readerFonts": {
-		"message": "字体"
 	},
 	"readerFootnotes": {
 		"message": "脚注"
@@ -1346,6 +1366,9 @@
 	"templatePropertiesDescription": {
 		"message": "添加到剪藏笔记顶部的属性。使用变量预填充页面数据。"
 	},
+	"templatesHeading": {
+		"message": "模板"
+	},
 	"templateTriggers": {
 		"message": "模板触发器"
 	},
@@ -1354,9 +1377,6 @@
 	},
 	"templateValid": {
 		"message": "模板语法有效"
-	},
-	"templatesHeading": {
-		"message": "模板"
 	},
 	"thinking": {
 		"message": "思考中"

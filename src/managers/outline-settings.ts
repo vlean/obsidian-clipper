@@ -193,6 +193,9 @@ export async function initializeOutlineSettings(): Promise<void> {
 	initializeSettingToggle('outline-related-documents-toggle', generalSettings.outline.showRelatedDocuments, (checked) => {
 		saveOutlineSettings({ showRelatedDocuments: checked });
 	});
+	initializeSettingToggle('outline-excerpt-highlight-toggle', generalSettings.outline.excerptHighlight, (checked) => {
+		saveOutlineSettings({ excerptHighlight: checked });
+	});
 	initializeAiSummaryTemplateButton();
 	const frontmatterStyle = document.getElementById('outline-frontmatter-style') as HTMLSelectElement | null;
 	if (frontmatterStyle) {

@@ -39,7 +39,26 @@ export const OUTLINE_ACTIONS = {
 	syncNotes: 'outlineSyncNotes',
 	shareDocument: 'outlineShareDocument',
 	findRelated: 'outlineFindRelated',
+	excerptToDaily: 'outlineExcerptToDaily',
 } as const;
+
+/**
+ * Pure decision: is Outline configured enough to clip to it? Requires an
+ * instance URL, a default collection, and a non-empty API key. Extracted so the
+ * context-menu visibility decision can be unit-tested without the extension
+ * environment. The API key is only checked for presence.
+ */
+export function isOutlineConfigured(
+	settings: { baseUrl?: string; collectionId?: string } | null | undefined,
+	apiKey: string | undefined | null,
+): boolean {
+	return Boolean(
+		settings
+		&& typeof settings.baseUrl === 'string' && settings.baseUrl.trim()
+		&& typeof settings.collectionId === 'string' && settings.collectionId.trim()
+		&& typeof apiKey === 'string' && apiKey.trim(),
+	);
+}
 
 export interface OutlineFailure {
 	success: false;

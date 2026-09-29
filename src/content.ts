@@ -12,6 +12,7 @@ import { saveFile } from './utils/file-utils';
 import { debugLog } from './utils/debug';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './utils/iframe-resize';
 import { parseForClip } from './utils/clip-utils';
+import { showPageToast } from './utils/page-toast';
 
 declare global {
 	interface Window {
@@ -178,6 +179,48 @@ declare global {
 			return true;
 		}
 
+		if (request.action === "getSelectionMarkdown") {
+			flattenShadowDom(document).then(() => {
+				try {
+					const selection = window.getSelection();
+					let markdown = '';
+					if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+						const div = document.createElement('div');
+						for (let i = 0; i < selection.rangeCount; i++) {
+							div.appendChild(selection.getRangeAt(i).cloneContents());
+						}
+						const html = serializeChildren(div);
+						markdown = html ? createMarkdownContent(html, document.URL) : '';
+					}
+					sendResponse({
+						success: true,
+						markdown: markdown.trim(),
+						text: (selection?.toString() ?? '').trim(),
+						title: document.title,
+						url: location.href,
+					});
+				} catch (err) {
+					console.error('Failed to get selection markdown:', err);
+					sendResponse({ success: false, error: (err as Error).message });
+				}
+			});
+			return true;
+		}
+
+		if (request.action === "showPageToast") {
+			try {
+				showPageToast(String(request.message ?? ''), {
+					variant: request.variant === 'error' ? 'error' : 'info',
+					duration: typeof request.duration === 'number' ? request.duration : undefined,
+				});
+				sendResponse({ success: true });
+			} catch (err) {
+				console.error('Failed to show page toast:', err);
+				sendResponse({ success: false, error: (err as Error).message });
+			}
+			return true;
+		}
+
 		if (request.action === "saveMarkdownToFile") {
 			flattenShadowDom(document).then(async () => {
 				try {
@@ -327,7 +370,11 @@ declare global {
 			sendResponse({ success: true });
 		} else if (request.action === "highlightSelection") {
 			ensureHighlighterCSS();
-			highlighter.toggleHighlighterMenu(request.isActive);
+			// keepMenuState lets the background add a highlight (e.g. after an
+			// Outline excerpt) without turning the highlighter menu/mode on.
+			if (!request.keepMenuState) {
+				highlighter.toggleHighlighterMenu(request.isActive);
+			}
 			const selection = window.getSelection();
 			if (selection && !selection.isCollapsed) {
 				highlighter.handleTextSelection(selection);

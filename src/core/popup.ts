@@ -255,11 +255,14 @@ function setupStorageListeners() {
 function setupMessageListeners() {
 	browser.runtime.onMessage.addListener((request: any, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void) => {
 		if (request.action === "triggerQuickClip") {
-			const quickClip = loadedSettings?.saveBehavior === 'addToOutline' ? handleClipOutline : handleClipObsidian;
+			// `target: 'outline'` forces an Outline clip (right-click "Clip to Outline"),
+			// regardless of the configured default save behavior.
+			const useOutline = request.target === 'outline' || loadedSettings?.saveBehavior === 'addToOutline';
+			const quickClip = useOutline ? handleClipOutline : handleClipObsidian;
 			quickClip().then(() => {
 				sendResponse({success: true});
 			}).catch((error) => {
-				console.error('Error in handleClipObsidian:', error);
+				console.error('Error in triggerQuickClip:', error);
 				sendResponse({success: false, error: error.message});
 			});
 			return true;
