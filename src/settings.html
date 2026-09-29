@@ -139,6 +139,59 @@
 								<ul id="vault-list" class="setting-item-list"></ul>
 								</div>
 							</div>
+							<div class="setting-group" id="outline-subsection">
+								<div class="setting-item setting-item-heading"><h3 data-i18n="outline">Outline</h3></div>
+								<div class="setting-items">
+									<div class="setting-item-description" data-i18n="outlineDescription">Save clipped pages as documents in Outline. The API key is stored only on this device and is never synced or exported.</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="outline-base-url" data-i18n="outlineBaseUrl">Server URL</label>
+											<div class="setting-item-description" data-i18n="outlineBaseUrlDescription">Use https://app.getoutline.com or the URL of your self-hosted instance.</div>
+										</div>
+										<div class="setting-item-control">
+											<input type="text" inputmode="url" id="outline-base-url" placeholder="https://app.getoutline.com" autocomplete="off" spellcheck="false" />
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="outline-api-key" data-i18n="outlineApiKey">API key</label>
+											<div class="setting-item-description" data-i18n="outlineApiKeyDescription">Create a key under Settings → API &amp; Apps in Outline.</div>
+										</div>
+										<div class="setting-item-control">
+											<input type="password" id="outline-api-key" placeholder="ol_api_…" autocomplete="off" spellcheck="false" />
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="outline-connect-btn" data-i18n="outlineConnection">Connection</label>
+											<div class="setting-item-description" id="outline-connection-status" aria-live="polite"></div>
+										</div>
+										<div class="setting-item-control">
+											<button type="button" id="outline-connect-btn" class="btn" data-i18n="outlineConnect">Connect</button>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="outline-collection-select" data-i18n="outlineCollection">Collection</label>
+											<div class="setting-item-description" data-i18n="outlineCollectionDescription">New documents are created in this collection.</div>
+										</div>
+										<div class="setting-item-control">
+											<select id="outline-collection-select"></select>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="outline-publish-toggle" data-i18n="outlinePublish">Publish immediately</label>
+											<div class="setting-item-description" data-i18n="outlinePublishDescription">When off, documents are saved as drafts visible only to you.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container">
+												<input type="checkbox" id="outline-publish-toggle" />
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
 							<div class="setting-group" id="hotkeys-subsection">
 								<div class="setting-item setting-item-heading"><h3 data-i18n="hotkeys">Hotkeys</h3></div>
 								<div class="setting-items">
@@ -160,6 +213,7 @@
 										<div class="setting-item-control">
 											<select id="save-behavior-dropdown">
 												<option value="addToObsidian" selected data-i18n="addToObsidian">Add to Obsidian</option>
+												<option value="addToOutline" data-i18n="addToOutline">Add to Outline</option>
 												<option value="copyToClipboard" data-i18n="copyToClipboard">Copy to clipboard</option>
 												<option value="saveFile" data-i18n="saveFile">Save file</option>
 											</select>

@@ -48,7 +48,18 @@ export interface Rating {
 	date: string;
 }
 
-export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
+export type SaveBehavior = 'addToObsidian' | 'addToOutline' | 'saveFile' | 'copyToClipboard';
+
+export interface OutlineSettings {
+	/** Outline instance URL, e.g. https://app.getoutline.com or a self-hosted URL */
+	baseUrl: string;
+	/** Default collection new documents are created in */
+	collectionId: string;
+	/** Cached collection name, for display only */
+	collectionName: string;
+	/** Publish documents immediately instead of creating drafts */
+	publish: boolean;
+}
 
 export interface ReaderSettings {
 	fontSize: number;
@@ -88,6 +99,7 @@ export interface Settings {
 	readerSettings: ReaderSettings;
 	stats: {
 		addToObsidian: number;
+		addToOutline: number;
 		saveFile: number;
 		copyToClipboard: number;
 		share: number;
@@ -95,7 +107,8 @@ export interface Settings {
 	};
 	history: HistoryEntry[];
 	ratings: Rating[];
-	saveBehavior: 'addToObsidian' | 'saveFile' | 'copyToClipboard';
+	saveBehavior: SaveBehavior;
+	outline: OutlineSettings;
 }
 
 export interface ModelConfig {
@@ -109,7 +122,7 @@ export interface ModelConfig {
 export interface HistoryEntry {
 	datetime: string;
 	url: string;
-	action: 'addToObsidian' | 'saveFile' | 'copyToClipboard' | 'share' | 'readerMode';
+	action: 'addToObsidian' | 'addToOutline' | 'saveFile' | 'copyToClipboard' | 'share' | 'readerMode';
 	title?: string;
 	vault?: string;
 	path?: string;

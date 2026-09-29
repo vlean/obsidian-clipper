@@ -1,8 +1,39 @@
 import browser from './browser-polyfill';
-import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating } from '../types/types';
+import { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, OutlineSettings, SaveBehavior } from '../types/types';
 import { debugLog } from './debug';
 
-export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating };
+export type { Settings, ModelConfig, PropertyType, HistoryEntry, Provider, Rating, OutlineSettings };
+
+// The Outline API key is kept in local storage only, never in sync storage,
+// so it is not synced across devices or included in settings exports.
+export const OUTLINE_API_KEY_STORAGE_KEY = 'outline_api_key';
+
+export const DEFAULT_OUTLINE_SETTINGS: OutlineSettings = {
+	baseUrl: 'https://app.getoutline.com',
+	collectionId: '',
+	collectionName: '',
+	publish: true,
+};
+
+export async function getOutlineApiKey(): Promise<string> {
+	const result = await browser.storage.local.get(OUTLINE_API_KEY_STORAGE_KEY);
+	const value = result[OUTLINE_API_KEY_STORAGE_KEY];
+	return typeof value === 'string' ? value : '';
+}
+
+export async function setOutlineApiKey(apiKey: string): Promise<void> {
+	await browser.storage.local.set({ [OUTLINE_API_KEY_STORAGE_KEY]: apiKey.trim() });
+}
+
+export function sanitizeOutlineSettings(raw: unknown): OutlineSettings {
+	const data = (raw && typeof raw === 'object' ? raw : {}) as Partial<OutlineSettings>;
+	return {
+		baseUrl: typeof data.baseUrl === 'string' && data.baseUrl.trim() ? data.baseUrl.trim() : DEFAULT_OUTLINE_SETTINGS.baseUrl,
+		collectionId: typeof data.collectionId === 'string' ? data.collectionId : DEFAULT_OUTLINE_SETTINGS.collectionId,
+		collectionName: typeof data.collectionName === 'string' ? data.collectionName : DEFAULT_OUTLINE_SETTINGS.collectionName,
+		publish: typeof data.publish === 'boolean' ? data.publish : DEFAULT_OUTLINE_SETTINGS.publish,
+	};
+}
 
 export let generalSettings: Settings = {
 	vaults: [],
@@ -40,6 +71,7 @@ export let generalSettings: Settings = {
 	},
 	stats: {
 		addToObsidian: 0,
+		addToOutline: 0,
 		saveFile: 0,
 		copyToClipboard: 0,
 		share: 0,
@@ -47,7 +79,8 @@ export let generalSettings: Settings = {
 	},
 	history: [],
 	ratings: [],
-	saveBehavior: 'addToObsidian'
+	saveBehavior: 'addToObsidian',
+	outline: { ...DEFAULT_OUTLINE_SETTINGS }
 };
 
 export function setLocalStorage(key: string, value: any): Promise<void> {
@@ -65,8 +98,9 @@ interface StorageData {
 		legacyMode?: boolean;
 		silentOpen?: boolean;
 		openBehavior?: boolean | 'popup' | 'embedded';
-		saveBehavior?: 'addToObsidian' | 'copyToClipboard' | 'saveFile';
+		saveBehavior?: SaveBehavior;
 	};
+	outline_settings?: Partial<OutlineSettings>;
 	vaults?: string[];
 	highlighter_settings?: {
 		highlighterEnabled?: boolean;
@@ -101,6 +135,7 @@ interface StorageData {
 	property_types?: PropertyType[];
 	stats?: {
 		addToObsidian: number;
+		addToOutline?: number;
 		saveFile: number;
 		copyToClipboard: number;
 		share: number;
@@ -135,6 +170,7 @@ export async function loadSettings(): Promise<Settings> {
 		defaultPromptContext: '',
 		propertyTypes: [],
 		saveBehavior: 'addToObsidian',
+		outline: { ...DEFAULT_OUTLINE_SETTINGS },
 		readerSettings: {
 			fontSize: 16,
 			lineHeight: 1.6,
@@ -154,6 +190,7 @@ export async function loadSettings(): Promise<Settings> {
 		},
 		stats: {
 			addToObsidian: 0,
+			addToOutline: 0,
 			saveFile: 0,
 			copyToClipboard: 0,
 			share: 0,
@@ -218,7 +255,8 @@ export async function loadSettings(): Promise<Settings> {
 		stats: { ...defaultSettings.stats, ...data.stats },
 		history: data.history || defaultSettings.history,
 		ratings: data.ratings || defaultSettings.ratings,
-		saveBehavior: data.general_settings?.saveBehavior ?? defaultSettings.saveBehavior
+		saveBehavior: data.general_settings?.saveBehavior ?? defaultSettings.saveBehavior,
+		outline: sanitizeOutlineSettings(data.outline_settings)
 	};
 
 	generalSettings = loadedSettings;
@@ -272,7 +310,8 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			highlightActiveLine: generalSettings.readerSettings.highlightActiveLine,
 			customCss: generalSettings.readerSettings.customCss
 		},
-		stats: generalSettings.stats
+		stats: generalSettings.stats,
+		outline_settings: generalSettings.outline
 	});
 }
 

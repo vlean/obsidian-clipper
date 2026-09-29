@@ -18,6 +18,7 @@ import { getClipHistory } from '../utils/storage-utils';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import { showModal, hideModal } from '../utils/modal-utils';
+import { initializeOutlineSettings } from './outline-settings';
 
 dayjs.extend(weekOfYear);
 
@@ -227,6 +228,7 @@ export function initializeGeneralSettings(): void {
 		initializeHighlighterSettings();
 		initializeExportHighlightsButton();
 		initializeSaveBehaviorDropdown();
+		await initializeOutlineSettings();
 		await initializeUsageChart();
 
 		// Initialize feedback modal close button
@@ -367,7 +369,7 @@ function initializeSaveBehaviorDropdown(): void {
 
     dropdown.value = generalSettings.saveBehavior;
     dropdown.addEventListener('change', () => {
-        const newValue = dropdown.value as 'addToObsidian' | 'copyToClipboard' | 'saveFile';
+        const newValue = dropdown.value as Settings['saveBehavior'];
         saveSettings({ saveBehavior: newValue });
     });
 }

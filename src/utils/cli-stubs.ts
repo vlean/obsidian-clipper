@@ -42,6 +42,7 @@ export const generalSettings: Settings = {
 	},
 	stats: {
 		addToObsidian: 0,
+		addToOutline: 0,
 		saveFile: 0,
 		copyToClipboard: 0,
 		share: 0,
@@ -50,6 +51,12 @@ export const generalSettings: Settings = {
 	history: [],
 	ratings: [],
 	saveBehavior: 'addToObsidian',
+	outline: {
+		baseUrl: 'https://app.getoutline.com',
+		collectionId: '',
+		collectionName: '',
+		publish: true,
+	},
 };
 
 export const loadSettings = async () => {};

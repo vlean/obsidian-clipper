@@ -20,6 +20,9 @@
 	"addToObsidian": {
 		"message": "Add to Obsidian"
 	},
+	"addToOutline": {
+		"message": "Add to Outline"
+	},
 	"addVaultPlaceholder": {
 		"message": "Press enter to add a vault"
 	},
@@ -593,6 +596,89 @@
 	"orPasteBelow": {
 		"message": "Or paste content below"
 	},
+	"outline": {
+		"message": "Outline"
+	},
+	"outlineApiKey": {
+		"message": "API key"
+	},
+	"outlineApiKeyDescription": {
+		"message": "Create a key under Settings → API & Apps in Outline."
+	},
+	"outlineBaseUrl": {
+		"message": "Server URL"
+	},
+	"outlineBaseUrlDescription": {
+		"message": "Use https://app.getoutline.com or the URL of your self-hosted instance."
+	},
+	"outlineCollection": {
+		"message": "Collection"
+	},
+	"outlineCollectionDescription": {
+		"message": "New documents are created in this collection."
+	},
+	"outlineConnect": {
+		"message": "Connect"
+	},
+	"outlineConnectedAs": {
+		"message": "Connected as $1 ($2)",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
+	"outlineConnecting": {
+		"message": "Connecting…"
+	},
+	"outlineConnection": {
+		"message": "Connection"
+	},
+	"outlineConnectToLoad": {
+		"message": "Connect to load collections"
+	},
+	"outlineDescription": {
+		"message": "Save clipped pages as documents in Outline. The API key is stored only on this device and is never synced or exported."
+	},
+	"outlineErrorConfig": {
+		"message": "Outline is not configured. Set the server URL, API key and collection in Settings."
+	},
+	"outlineErrorForbidden": {
+		"message": "The Outline API key does not have permission for this action."
+	},
+	"outlineErrorGeneric": {
+		"message": "Failed to save to Outline."
+	},
+	"outlineErrorNetwork": {
+		"message": "Could not reach the Outline server. Check the URL and your network."
+	},
+	"outlineErrorNotFound": {
+		"message": "The Outline collection could not be found."
+	},
+	"outlineErrorRateLimited": {
+		"message": "Outline rate limit reached. Please try again in a moment."
+	},
+	"outlineErrorUnauthorized": {
+		"message": "The Outline API key is invalid or has been revoked."
+	},
+	"outlineInvalidUrl": {
+		"message": "Invalid server URL."
+	},
+	"outlineNoCollections": {
+		"message": "No collections found"
+	},
+	"outlinePublish": {
+		"message": "Publish immediately"
+	},
+	"outlinePublishDescription": {
+		"message": "When off, documents are saved as drafts visible only to you."
+	},
+	"outlineSelectCollection": {
+		"message": "Select a collection"
+	},
 	"overwriteNote": {
 		"message": "Overwrite note"
 	},
@@ -923,8 +1009,14 @@
 	"saved": {
 		"message": "Saved"
 	},
+	"savedToOutline": {
+		"message": "Saved to Outline"
+	},
 	"saveFile": {
 		"message": "Save file..."
+	},
+	"savingToOutline": {
+		"message": "Saving…"
 	},
 	"searchHighlightsPlaceholder": {
 		"message": "Search highlights…"

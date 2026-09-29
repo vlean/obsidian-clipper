@@ -7,6 +7,7 @@ import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
 import { incrementStat } from './utils/storage-utils';
 import { hasStoredHighlights } from './utils/url-utils';
+import { handleOutlineMessage } from './utils/outline-service';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
@@ -397,6 +398,12 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
 	if (typeof request === 'object' && request !== null) {
 		const typedRequest = request as { action: string; isActive?: boolean; hasHighlights?: boolean; tabId?: number; text?: string; section?: string; readerUrl?: string; url?: string };
+
+		const outlineResponse = handleOutlineMessage(request as { action?: string } & Record<string, unknown>);
+		if (outlineResponse) {
+			outlineResponse.then(sendResponse);
+			return true;
+		}
 
 		if (typedRequest.action === 'loadContentScriptForHighlights') {
 			const tabId = sender.tab?.id;

@@ -23,6 +23,9 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
+import { buildOutlineDocumentText, normalizeOutlineTitle } from '../utils/outline-markdown';
+import { getOutlineErrorMessageKey } from '../utils/outline-client';
+import { OUTLINE_ACTIONS, OutlineCreateDocumentResponse } from '../utils/outline-service';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -245,7 +248,8 @@ function setupStorageListeners() {
 function setupMessageListeners() {
 	browser.runtime.onMessage.addListener((request: any, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void) => {
 		if (request.action === "triggerQuickClip") {
-			handleClipObsidian().then(() => {
+			const quickClip = loadedSettings?.saveBehavior === 'addToOutline' ? handleClipOutline : handleClipObsidian;
+			quickClip().then(() => {
 				sendResponse({success: true});
 			}).catch((error) => {
 				console.error('Error in handleClipObsidian:', error);
@@ -1286,6 +1290,14 @@ function determineMainAction() {
 	// Clear existing secondary actions
 	secondaryActions.textContent = '';
 
+	// Only offer Outline as a secondary action once a collection is configured
+	const outlineConfigured = Boolean(loadedSettings.outline?.collectionId);
+	const addOutlineAction = () => {
+		if (outlineConfigured) {
+			addSecondaryAction(secondaryActions, 'addToOutline', () => handleClipOutline());
+		}
+	};
+
 	// Set up actions based on saved behavior
 	switch (loadedSettings.saveBehavior) {
 		case 'copyToClipboard':
@@ -1293,6 +1305,7 @@ function determineMainAction() {
 			mainButton.onclick = () => copyContent();
 			// Add direct actions to secondary
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
+			addOutlineAction();
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 			break;
 		case 'saveFile':
@@ -1300,14 +1313,113 @@ function determineMainAction() {
 			mainButton.onclick = () => handleSaveToDownloads();
 			// Add direct actions to secondary
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
+			addOutlineAction();
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
+			break;
+		case 'addToOutline':
+			mainButton.textContent = getMessage('addToOutline');
+			mainButton.onclick = () => handleClipOutline();
+			// Add direct actions to secondary
+			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
+			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
+			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 			break;
 		default: // 'addToObsidian'
 			mainButton.textContent = getMessage('addToObsidian');
 			mainButton.onclick = () => handleClipObsidian();
 			// Add direct actions to secondary
+			addOutlineAction();
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
+	}
+}
+
+async function ensureInterpreterFinished(): Promise<void> {
+	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
+	if (currentTemplate && generalSettings.interpreterEnabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
+		if (interpretBtn.classList.contains('processing')) {
+			await waitForInterpreter(interpretBtn);
+		} else if (!interpretBtn.classList.contains('done')) {
+			interpretBtn.click();
+			await waitForInterpreter(interpretBtn);
+		}
+	}
+}
+
+let outlineSaveInProgress = false;
+
+async function handleClipOutline(): Promise<void> {
+	if (!currentTemplate || outlineSaveInProgress) return;
+
+	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
+	const clipButton = document.getElementById('clip-btn') as HTMLButtonElement | null;
+
+	if (!noteContentField) {
+		showError('Some required fields are missing. Please try reloading the extension.');
+		return;
+	}
+	if (!generalSettings.outline?.collectionId) {
+		showError('outlineErrorConfig');
+		return;
+	}
+
+	const originalButtonText = clipButton?.textContent ?? '';
+	outlineSaveInProgress = true;
+	try {
+		await ensureInterpreterFinished();
+
+		const properties = getPropertiesFromDOM();
+		const frontmatter = await generateFrontmatter(properties);
+		const tabInfo = await getCurrentTabInfo();
+
+		const title = normalizeOutlineTitle(noteNameField?.value || tabInfo.title || '');
+		const text = buildOutlineDocumentText(frontmatter, noteContentField.value);
+
+		if (clipButton) {
+			clipButton.disabled = true;
+			clipButton.textContent = getMessage('savingToOutline');
+		}
+
+		const response = await browser.runtime.sendMessage({
+			action: OUTLINE_ACTIONS.createDocument,
+			title,
+			text,
+		}) as OutlineCreateDocumentResponse | undefined;
+
+		if (!response || !response.success) {
+			const errorKey = getOutlineErrorMessageKey(response?.errorKind);
+			const detail = response?.error ? ` (${response.error})` : '';
+			console.error('Outline save failed:', response);
+			showError(`${getMessage(errorKey)}${detail}`);
+			throw new Error(response?.error || 'Outline save failed');
+		}
+
+		await incrementStat('addToOutline', generalSettings.outline.collectionName, '', tabInfo.url, tabInfo.title);
+
+		if (clipButton) {
+			clipButton.textContent = getMessage('savedToOutline');
+		}
+		if (!isSidePanel) {
+			setTimeout(() => window.close(), 500);
+		} else if (clipButton) {
+			setTimeout(() => {
+				clipButton.textContent = originalButtonText;
+				clipButton.disabled = false;
+			}, 1500);
+		}
+	} catch (error) {
+		console.error('Error in handleClipOutline:', error);
+		if (clipButton) {
+			clipButton.textContent = originalButtonText;
+			clipButton.disabled = false;
+		}
+		if (!document.body.classList.contains('has-error')) {
+			showError('outlineErrorGeneric');
+		}
+		throw error;
+	} finally {
+		outlineSaveInProgress = false;
 	}
 }
 
@@ -1397,6 +1509,7 @@ function getActionIcon(actionType: string): string {
 		case 'copyToClipboard': return 'copy';
 		case 'saveFile': return 'file-down';
 		case 'addToObsidian': return 'pen-line';
+		case 'addToOutline': return 'book-open';
 		default: return 'plus';
 	}
 }
