@@ -8,7 +8,7 @@ import { extractContentBySelector as extractContentBySelectorShared } from '../u
 import { setPageUrl, setPageTitle, updatePageDomainSettings, getHighlights, getHighlightRecords, repositionHighlights } from '../utils/highlighter';
 import { throttle } from '../utils/throttle';
 import { loadSettings } from '../utils/storage-utils';
-import Defuddle from 'defuddle';
+import Defuddle from 'defuddle/full';
 
 type MessageListener = (request: any, sender: any, sendResponse: (response?: any) => void) => true | undefined;
 let readerPageMessageListener: MessageListener | null = null;

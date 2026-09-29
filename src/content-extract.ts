@@ -1,5 +1,5 @@
 import browser from './utils/browser-polyfill';
-import Defuddle from 'defuddle';
+import Defuddle from 'defuddle/full';
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { serializeChildren } from './utils/dom-utils';

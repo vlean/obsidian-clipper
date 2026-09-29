@@ -63,7 +63,18 @@ module.exports = (env, argv) => {
 			minimizer: [
 				new TerserPlugin({
 					terserOptions: {
-						mangle: false,
+						// Enable identifier mangling. Nothing in the codebase depends on
+						// runtime function/class names: the only error whose name is
+						// inspected, OutlineApiError, sets `this.name = 'OutlineApiError'`
+						// as a string literal in its constructor (so mangling the class
+						// identifier is irrelevant), and all `instanceof` checks compare
+						// against the class reference itself, which mangling renames
+						// consistently within a bundle.
+						mangle: {
+							// Development builds keep readable identifiers; only mangle
+							// aggressively (top-level names too) in production.
+							toplevel: isProduction
+						},
 						compress: {
 							defaults: true,
 							global_defs: {
@@ -76,20 +87,27 @@ module.exports = (env, argv) => {
 							module: false
 						},
 						format: {
-							ascii_only: true,
+							// Extension JS is emitted as UTF-8 (webpack's default output
+							// encoding), which Chrome requires. Non-ASCII source (e.g.
+							// localized strings) is valid in UTF-8 JS, so we let Terser
+							// keep it verbatim rather than \u-escaping every character,
+							// which trims bytes from the string-heavy bundles.
+							ascii_only: false,
 							comments: false,
 							ecma: 2020
 						},
 						module: false,
 						toplevel: true,
-						keep_classnames: true,
-						keep_fnames: true
+						keep_classnames: false,
+						keep_fnames: false
 					},
 					extractComments: false
 				})
 			],
-			moduleIds: 'named',
-			chunkIds: 'named'
+			// Deterministic ids keep production output stable across builds without
+			// the byte cost of the human-readable 'named' ids used in development.
+			moduleIds: isProduction ? 'deterministic' : 'named',
+			chunkIds: isProduction ? 'deterministic' : 'named'
 		},
 		experiments: {
 			outputModule: false,

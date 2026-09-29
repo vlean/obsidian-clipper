@@ -9,7 +9,7 @@ import { buildOutlineComments } from './outline-comments';
 import { getOutlineTextOptions, getPublishedDate } from './outline-options';
 import { getOutlineErrorMessageKey } from './outline-client';
 import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse } from './outline-service';
-import hljs from 'highlight.js';
+import hljs from './highlight-core';
 import knapSyntax from 'knap/highlightjs';
 import { getDomain } from './string-utils';
 import type { HighlighterAPI } from './highlighter';

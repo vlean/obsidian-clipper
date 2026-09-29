@@ -3,7 +3,7 @@ import { AnyHighlightData, StoredData, DomainSettings, buildExportedPage, normal
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { addBrowserClassToHtml, detectBrowser } from '../utils/browser-detection';
 import DOMPurify from 'dompurify';
-import Defuddle from 'defuddle';
+import Defuddle from 'defuddle/full';
 import { createMarkdownContent } from 'defuddle/full';
 import { getFontCss } from '../utils/font-utils';
 import { ReaderSettings } from '../types/types';

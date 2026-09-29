@@ -2,7 +2,7 @@
 // Environment-agnostic — no Node.js or browser dependencies.
 // The caller provides a DocumentParser for their environment.
 
-import DefuddleClass from 'defuddle';
+import DefuddleClass from 'defuddle/full';
 import { createMarkdownContent } from 'defuddle/full';
 import {
 	compileTemplate,
