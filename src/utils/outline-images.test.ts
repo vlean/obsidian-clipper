@@ -77,6 +77,22 @@ describe('uploadOutlineImages', () => {
 		expect(JSON.parse(init!.body as string)).toEqual({ url: 'https://x.com/a.png', documentId: 'doc1' });
 	});
 
+	// Outline 1.10.x answers 200 with an empty attachment when the server-side
+	// download/storage fails; the URL then points at nothing (broken image).
+	test('treats an empty attachment as failed, keeps the original URL and cleans it up', async () => {
+		const fetchImpl = vi.fn(async (url: string) => url.endsWith('attachments.delete')
+			? jsonResponse({ success: true })
+			: jsonResponse({ data: { id: 'att1', url: '/api/attachments.redirect?id=att1', size: '0', contentType: 'application/octet-stream' } }));
+		const md = '![a](https://pbs.twimg.com/media/a.jpg)';
+		const result = await uploadOutlineImages(config, md, { documentId: 'doc1' }, { fetchImpl });
+		expect(result.text).toBe(md);
+		expect(result).toMatchObject({ uploaded: 0, failed: 1 });
+		expect(result.attachments).toEqual({});
+		expect(fetchImpl.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual([
+			'attachments.createFromUrl', 'attachments.delete',
+		]);
+	});
+
 	test('keeps the original URL when an upload fails', async () => {
 		const fetchImpl = vi.fn()
 			.mockResolvedValueOnce(jsonResponse({ message: 'Could not fetch' }, 400))

@@ -85,8 +85,11 @@ export async function saveOutlineDocument(
 			publish: input.publish,
 		}, options);
 		if (input.transformText) {
-			const text = await input.transformText(input.text, document.id);
-			if (text !== input.text) {
+			// documents.create already re-hosts the images it could fetch; start from
+			// the stored text so only the remaining remote images are uploaded
+			const base = typeof document.text === 'string' ? document.text : input.text;
+			const text = await input.transformText(base, document.id);
+			if (text !== base) {
 				document = await updateOutlineDocument(config, {
 					id: document.id,
 					text,

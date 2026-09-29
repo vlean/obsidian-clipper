@@ -16,6 +16,8 @@ export interface OutlineDocument {
 	id: string;
 	title: string;
 	url: string;
+	/** Markdown as stored by Outline, when the response includes it */
+	text?: string;
 }
 
 export interface OutlineAuthInfo {
@@ -221,7 +223,7 @@ export async function createOutlineDocument(
 	if (!params.collectionId) {
 		throw new OutlineApiError('config', 'No Outline collection selected');
 	}
-	const result = await outlineRequest<{ data?: { id: string; title: string; url: string } }>(
+	const result = await outlineRequest<{ data?: { id: string; title: string; url: string; text?: string } }>(
 		config,
 		'documents.create',
 		{
@@ -235,7 +237,9 @@ export async function createOutlineDocument(
 	if (!result.data || typeof result.data.id !== 'string') {
 		throw new OutlineApiError('server', 'Unexpected response from documents.create');
 	}
-	return { id: result.data.id, title: result.data.title, url: result.data.url };
+	const document: OutlineDocument = { id: result.data.id, title: result.data.title, url: result.data.url };
+	if (typeof result.data.text === 'string') document.text = result.data.text;
+	return document;
 }
 
 interface RawOutlineDocument {
@@ -334,6 +338,10 @@ export async function updateOutlineDocument(
 /**
  * Asks Outline to download a remote file and store it as an attachment of the
  * document. Returns the attachment URL to use in the document markdown.
+ *
+ * Outline can answer 200 with an empty attachment (size 0) when its own
+ * download or file storage failed. That URL would render as a broken image, so
+ * it's treated as a failure and the empty attachment is deleted.
  */
 export async function createOutlineAttachmentFromUrl(
 	config: OutlineConfig,
@@ -341,16 +349,26 @@ export async function createOutlineAttachmentFromUrl(
 	documentId: string,
 	options?: OutlineRequestOptions,
 ): Promise<string> {
-	const result = await outlineRequest<{ data?: { url?: string } }>(
+	const result = await outlineRequest<{ data?: { id?: string; url?: string; size?: string | number | null } }>(
 		config,
 		'attachments.createFromUrl',
 		{ url, documentId },
 		options,
 	);
-	if (!result.data || typeof result.data.url !== 'string' || !result.data.url) {
+	const attachment = result.data;
+	if (!attachment || typeof attachment.url !== 'string' || !attachment.url) {
 		throw new OutlineApiError('server', 'Unexpected response from attachments.createFromUrl');
 	}
-	return result.data.url;
+	// Size comes back as a string; only reject an explicit zero so servers that omit it still work
+	const size = attachment.size === undefined || attachment.size === null ? NaN : Number(attachment.size);
+	if (size === 0) {
+		if (typeof attachment.id === 'string') {
+			await outlineRequest(config, 'attachments.delete', { id: attachment.id }, options)
+				.catch(error => console.warn('Failed to delete empty Outline attachment:', error));
+		}
+		throw new OutlineApiError('server', 'Outline stored an empty attachment (server-side download or file storage failed)');
+	}
+	return attachment.url;
 }
 
 export interface CreateOutlineCommentParams {

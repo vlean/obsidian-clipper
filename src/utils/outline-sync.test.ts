@@ -154,6 +154,17 @@ describe('saveOutlineDocument transformText', () => {
 		]);
 	});
 
+	test('transforms the text stored by Outline, which already has server-side attachments', async () => {
+		const stored = '![a](/api/attachments.redirect?id=srv) ![b](https://x.com/b.png)';
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({ data: { ...doc('new', 'Page title'), text: stored } }))
+			.mockResolvedValueOnce(jsonResponse({ data: doc('new', 'Page title') }));
+		const transformText = vi.fn(async (text: string) => text.replace('https://x.com/b.png', '/att/b'));
+		await saveOutlineDocument(config, { ...base, text: '![a](https://x.com/a.png) ![b](https://x.com/b.png)', transformText }, { fetchImpl });
+		expect(transformText).toHaveBeenCalledWith(stored, 'new');
+		expect(calls(fetchImpl)[1].body.text).toBe('![a](/api/attachments.redirect?id=srv) ![b](/att/b)');
+	});
+
 	test('skips the extra update when the text is unchanged', async () => {
 		const fetchImpl = vi.fn(async () => jsonResponse({ data: doc('new', 'Page title') }));
 		await saveOutlineDocument(config, { ...base, transformText: async text => text }, { fetchImpl });
