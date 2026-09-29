@@ -2,6 +2,9 @@
 	"activity": {
 		"message": "Activity"
 	},
+	"addHighlightNote": {
+		"message": "Note"
+	},
 	"addModel": {
 		"message": "+ Add model"
 	},
@@ -215,6 +218,9 @@
 	"edit": {
 		"message": "Edit"
 	},
+	"editHighlightNote": {
+		"message": "Edit note"
+	},
 	"editModel": {
 		"message": "Edit model"
 	},
@@ -365,6 +371,12 @@
 	},
 	"highlightInline": {
 		"message": "Highlight the page content"
+	},
+	"highlightNote": {
+		"message": "Highlight note"
+	},
+	"highlightNotePlaceholder": {
+		"message": "Add a note… (⌘/Ctrl+Enter to save)"
 	},
 	"highlightPage": {
 		"message": "Highlight page"

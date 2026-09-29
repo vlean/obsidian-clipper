@@ -279,6 +279,105 @@ body.obsidian-highlighter-active {
 	background-color: rgba(255, 235, 0, 0.35);
 }
 
+// Highlights with a note get a dotted underline (painted by a second,
+// overlapping custom highlight so the tint stays unchanged).
+::highlight(obsidian-highlight-annotated) {
+	text-decoration: underline dotted rgba(200, 140, 0, 0.9);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+}
+
+.obsidian-highlight-overlay.obsidian-highlight-overlay-annotated {
+	outline: 2px dotted rgba(200, 140, 0, 0.9);
+	outline-offset: 1px;
+}
+
+// Note editor: fixed dark palette like the floating buttons, and explicit
+// resets because it lives inside arbitrary page CSS.
+.obsidian-highlight-note-editor {
+	position: absolute;
+	display: none;
+	flex-direction: column;
+	gap: 8px;
+	box-sizing: border-box;
+	padding: 8px;
+	background: #262626;
+	color: #f0f0f0;
+	border: 1px solid #424242;
+	border-radius: 10px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+	font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+	font-size: 13px;
+	line-height: 1.4;
+	text-align: left;
+	z-index: 999999999;
+
+	textarea {
+		all: unset;
+		box-sizing: border-box;
+		display: block;
+		width: 100%;
+		min-height: 72px;
+		max-height: 40vh;
+		padding: 6px 8px;
+		background: #1a1a1a;
+		color: #f0f0f0;
+		border: 1px solid #424242;
+		border-radius: 6px;
+		font: inherit;
+		white-space: pre-wrap;
+		overflow-wrap: break-word;
+		overflow-y: auto;
+		resize: vertical;
+		cursor: text;
+
+		&::placeholder {
+			color: #8a8a8a;
+		}
+
+		&:focus {
+			border-color: #8a5cf5;
+		}
+	}
+
+	.obsidian-highlight-note-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 6px;
+	}
+
+	button {
+		all: unset;
+		box-sizing: border-box;
+		padding: 4px 10px;
+		border-radius: 6px;
+		font: inherit;
+		font-weight: 500;
+		cursor: pointer;
+		color: #f0f0f0;
+		background: #353535;
+
+		&:focus-visible {
+			outline: 2px solid #8a5cf5;
+			outline-offset: 1px;
+		}
+	}
+
+	.obsidian-highlight-note-save {
+		background: #7c4dff;
+		color: #fff;
+	}
+
+	@media (hover: hover) {
+		button:hover {
+			background: #424242;
+		}
+		.obsidian-highlight-note-save:hover {
+			background: #8a5cf5;
+		}
+	}
+}
+
 // Shared base for floating action buttons (Remove highlight, Highlight selection).
 .obsidian-highlight-delete,
 .obsidian-selection-action {

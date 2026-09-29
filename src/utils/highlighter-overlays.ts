@@ -15,13 +15,16 @@ import { throttle } from './throttle';
 import { getElementByXPath, isDarkColor, setElementHTML } from './dom-utils';
 import { getMessage } from './i18n';
 import { debugLog } from './debug';
+import { getHighlightNoteText, setHighlightNoteText } from './highlight-notes';
 
 let touchStartX: number = 0;
 let touchStartY: number = 0;
 let isTouchMoved: boolean = false;
 
+const NOTE_EDITOR_CLASS = 'obsidian-highlight-note-editor';
+
 const IGNORED_BOUNDARY_SELECTOR =
-	'.obsidian-highlighter-menu, .obsidian-reader-settings, .transcript-segment > strong, .obsidian-highlight-delete, .obsidian-selection-action';
+	'.obsidian-highlighter-menu, .obsidian-reader-settings, .transcript-segment > strong, .obsidian-highlight-delete, .obsidian-selection-action, .' + NOTE_EDITOR_CLASS;
 
 // --- Custom Highlight API (for type: 'text' highlights) ---
 //
@@ -34,6 +37,8 @@ const IGNORED_BOUNDARY_SELECTOR =
 // If unavailable the renderer silently no-ops.
 
 const USER_HIGHLIGHT_NAME = 'obsidian-highlight';
+// Second, overlapping highlight that marks text highlights carrying a note.
+const ANNOTATED_HIGHLIGHT_NAME = 'obsidian-highlight-annotated';
 // Priority below transcript-playback (default 0) so audio playback highlights
 // paint on top inside transcripts.
 const USER_HIGHLIGHT_PRIORITY = -1;
@@ -49,6 +54,7 @@ interface HighlightInstance {
 }
 
 let userHighlight: HighlightInstance | null = null;
+let annotatedHighlight: HighlightInstance | null = null;
 // Map of highlight id → list of Ranges. One stored highlight may produce
 // multiple ranges in edge cases (future-proofing); today it's always one.
 const textHighlightRanges = new Map<string, Range[]>();
@@ -73,6 +79,9 @@ function ensureUserHighlight(): HighlightInstance | null {
 	userHighlight = new HighlightCtor();
 	userHighlight.priority = USER_HIGHLIGHT_PRIORITY;
 	registry.set(USER_HIGHLIGHT_NAME, userHighlight);
+	annotatedHighlight = new HighlightCtor();
+	annotatedHighlight.priority = USER_HIGHLIGHT_PRIORITY;
+	registry.set(ANNOTATED_HIGHLIGHT_NAME, annotatedHighlight);
 	return userHighlight;
 }
 
@@ -117,7 +126,7 @@ type RenderableTextHighlight = {
 	textQuote?: TextQuoteAnchor;
 };
 
-export function renderTextHighlight(highlight: RenderableTextHighlight): void {
+export function renderTextHighlight(highlight: RenderableTextHighlight, annotated = false): void {
 	const hl = ensureUserHighlight();
 	if (!hl) return;
 
@@ -134,6 +143,7 @@ export function renderTextHighlight(highlight: RenderableTextHighlight): void {
 
 	if (!range) return;
 	hl.add(range);
+	if (annotated) annotatedHighlight?.add(range);
 	const existing = textHighlightRanges.get(highlight.id);
 	if (existing) existing.push(range);
 	else textHighlightRanges.set(highlight.id, [range]);
@@ -359,6 +369,7 @@ function domPositionForNormalizedOffset(index: NormalizedTextIndex, offset: numb
 
 export function clearTextHighlights(): void {
 	userHighlight?.clear();
+	annotatedHighlight?.clear();
 	textHighlightRanges.clear();
 	normalizedTextIndexCache = null;
 	normalizedTextIndexRoot = null;
@@ -407,7 +418,10 @@ let currentDeleteTargetId: string | null = null;
 let deleteButtonShownViaAlt = false;
 
 function ensureHighlightDeleteButton(): HTMLButtonElement {
-	if (highlightDeleteButton) return highlightDeleteButton;
+	if (highlightDeleteButton) {
+		if (!highlightDeleteButton.isConnected) document.body.appendChild(highlightDeleteButton);
+		return highlightDeleteButton;
+	}
 	const btn = document.createElement('button');
 	btn.type = 'button';
 	btn.className = 'obsidian-highlight-delete';
@@ -427,19 +441,33 @@ function ensureHighlightDeleteButton(): HTMLButtonElement {
 	return btn;
 }
 
-function showHighlightDeleteButtonForText(id: string): void {
+interface HighlightBounds { left: number; right: number; top: number; bottom: number; }
+
+// Viewport bounding box of a rendered highlight (text ranges or element overlay).
+function getHighlightBounds(id: string): HighlightBounds | null {
 	const ranges = textHighlightRanges.get(id);
-	if (!ranges || ranges.length === 0) return;
-	const rects = ranges[0].getClientRects();
-	if (rects.length === 0) return;
-	// Compute bounding box across all line rects for center-top positioning.
-	let left = Infinity, right = -Infinity, top = Infinity;
-	for (let i = 0; i < rects.length; i++) {
-		if (rects[i].left < left) left = rects[i].left;
-		if (rects[i].right > right) right = rects[i].right;
-		if (rects[i].top < top) top = rects[i].top;
+	if (ranges && ranges.length > 0) {
+		const rects = ranges[0].getClientRects();
+		if (rects.length === 0) return null;
+		let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+		for (let i = 0; i < rects.length; i++) {
+			if (rects[i].left < left) left = rects[i].left;
+			if (rects[i].right > right) right = rects[i].right;
+			if (rects[i].top < top) top = rects[i].top;
+			if (rects[i].bottom > bottom) bottom = rects[i].bottom;
+		}
+		return { left, right, top, bottom };
 	}
-	positionDeleteButton(id, (left + right) / 2, top);
+	const overlay = Array.from(document.querySelectorAll<HTMLElement>('.obsidian-highlight-overlay'))
+		.find(el => el.dataset.highlightId === id);
+	if (!overlay) return null;
+	const rect = overlay.getBoundingClientRect();
+	return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+}
+
+function showHighlightDeleteButtonForText(id: string): void {
+	const bounds = getHighlightBounds(id);
+	if (bounds) positionDeleteButton(id, (bounds.left + bounds.right) / 2, bounds.top);
 }
 
 function showHighlightDeleteButtonForOverlay(overlay: HTMLElement): void {
@@ -449,20 +477,180 @@ function showHighlightDeleteButtonForOverlay(overlay: HTMLElement): void {
 	positionDeleteButton(id, (rect.left + rect.right) / 2, rect.top);
 }
 
+// Lays out the Note and Remove buttons side by side, centered above the highlight.
 function positionDeleteButton(id: string, centerX: number, top: number): void {
 	const btn = ensureHighlightDeleteButton();
+	const noteBtn = ensureHighlightNoteButton();
 	currentDeleteTargetId = id;
+	updateNoteButtonLabel(noteBtn, id);
 	btn.style.display = 'flex';
+	noteBtn.style.display = 'flex';
+	const gap = 6;
+	const noteWidth = noteBtn.offsetWidth || 70;
 	const btnWidth = btn.offsetWidth || 80;
-	const idealLeft = centerX - btnWidth / 2;
-	const clampedLeft = Math.max(4, Math.min(idealLeft, window.innerWidth - btnWidth - 4));
-	btn.style.left = `${clampedLeft + window.scrollX}px`;
-	btn.style.top = `${top + window.scrollY - 28}px`;
+	const totalWidth = noteWidth + gap + btnWidth;
+	const idealLeft = centerX - totalWidth / 2;
+	const clampedLeft = Math.max(4, Math.min(idealLeft, window.innerWidth - totalWidth - 4));
+	const buttonTop = `${top + window.scrollY - 28}px`;
+	noteBtn.style.left = `${clampedLeft + window.scrollX}px`;
+	noteBtn.style.top = buttonTop;
+	btn.style.left = `${clampedLeft + noteWidth + gap + window.scrollX}px`;
+	btn.style.top = buttonTop;
 }
 
 export function hideHighlightDeleteButton(): void {
 	if (highlightDeleteButton) highlightDeleteButton.style.display = 'none';
+	if (highlightNoteButton) highlightNoteButton.style.display = 'none';
 	currentDeleteTargetId = null;
+}
+
+// --- Highlight notes ---
+//
+// "Note" sits next to "Remove" and opens a small editor below the highlight.
+// Notes are stored on the highlight (`notes`) and included in clips via the
+// {{highlights}} variable. Highlights with a note get a dotted underline.
+
+let highlightNoteButton: HTMLButtonElement | null = null;
+let noteEditor: HTMLDivElement | null = null;
+let noteEditorTextarea: HTMLTextAreaElement | null = null;
+let noteEditorTargetId: string | null = null;
+
+const NOTE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
+
+function groupHasNote(id: string): boolean {
+	return getHighlightNoteText(highlights, id).length > 0;
+}
+
+function ensureHighlightNoteButton(): HTMLButtonElement {
+	if (highlightNoteButton) {
+		// Pages that replace <body> detach it; re-attach instead of rebuilding
+		if (!highlightNoteButton.isConnected) document.body.appendChild(highlightNoteButton);
+		return highlightNoteButton;
+	}
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	// Shares the Remove button's styling and click-through exemptions
+	btn.className = 'obsidian-highlight-delete obsidian-highlight-note-button';
+	btn.style.display = 'none';
+	btn.addEventListener('mousedown', e => e.stopPropagation());
+	btn.addEventListener('click', (e) => {
+		e.stopPropagation();
+		e.preventDefault();
+		if (currentDeleteTargetId) openHighlightNoteEditor(currentDeleteTargetId);
+	});
+	document.body.appendChild(btn);
+	highlightNoteButton = btn;
+	return btn;
+}
+
+function updateNoteButtonLabel(btn: HTMLButtonElement, id: string): void {
+	const note = getHighlightNoteText(highlights, id);
+	const label = getMessage(note ? 'editHighlightNote' : 'addHighlightNote');
+	setElementHTML(btn, NOTE_ICON);
+	const span = document.createElement('span');
+	span.textContent = label;
+	btn.appendChild(span);
+	btn.setAttribute('aria-label', label);
+	if (note) btn.title = note;
+	else btn.removeAttribute('title');
+}
+
+function ensureNoteEditor(): HTMLDivElement {
+	if (noteEditor) {
+		if (!noteEditor.isConnected) document.body.appendChild(noteEditor);
+		return noteEditor;
+	}
+	const editor = document.createElement('div');
+	editor.className = NOTE_EDITOR_CLASS;
+	editor.setAttribute('role', 'dialog');
+	editor.setAttribute('aria-label', getMessage('highlightNote'));
+	editor.style.display = 'none';
+
+	const textarea = document.createElement('textarea');
+	textarea.rows = 4;
+	textarea.placeholder = getMessage('highlightNotePlaceholder');
+	textarea.setAttribute('aria-label', getMessage('highlightNote'));
+
+	const actions = document.createElement('div');
+	actions.className = 'obsidian-highlight-note-actions';
+	const cancelButton = document.createElement('button');
+	cancelButton.type = 'button';
+	cancelButton.className = 'obsidian-highlight-note-cancel';
+	cancelButton.textContent = getMessage('cancel');
+	cancelButton.addEventListener('click', () => closeHighlightNoteEditor(false));
+	const saveButton = document.createElement('button');
+	saveButton.type = 'button';
+	saveButton.className = 'obsidian-highlight-note-save';
+	saveButton.textContent = getMessage('save');
+	saveButton.addEventListener('click', () => closeHighlightNoteEditor(true));
+	actions.append(cancelButton, saveButton);
+	editor.append(textarea, actions);
+
+	// Keep page scripts and highlighter shortcuts (Esc, Cmd+Z) away from typing
+	for (const type of ['mousedown', 'mouseup', 'click', 'keyup', 'keypress'] as const) {
+		editor.addEventListener(type, e => e.stopPropagation());
+	}
+	editor.addEventListener('keydown', (e) => {
+		e.stopPropagation();
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeHighlightNoteEditor(false);
+		} else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+			e.preventDefault();
+			closeHighlightNoteEditor(true);
+		}
+	});
+
+	document.body.appendChild(editor);
+	noteEditor = editor;
+	noteEditorTextarea = textarea;
+	return editor;
+}
+
+export function openHighlightNoteEditor(id: string): void {
+	if (!highlights.some((h: AnyHighlightData) => h.id === id)) return;
+	const bounds = getHighlightBounds(id);
+	const editor = ensureNoteEditor();
+	const textarea = noteEditorTextarea!;
+	noteEditorTargetId = id;
+	textarea.value = getHighlightNoteText(highlights, id);
+	hideHighlightDeleteButton();
+
+	editor.style.display = 'flex';
+	const width = Math.min(320, window.innerWidth - 8);
+	editor.style.width = `${width}px`;
+	const anchorLeft = bounds ? (bounds.left + bounds.right) / 2 - width / 2 : (window.innerWidth - width) / 2;
+	const left = Math.max(4, Math.min(anchorLeft, window.innerWidth - width - 4));
+	const height = editor.offsetHeight || 140;
+	// Prefer below the highlight; flip above when there's no room
+	let top = bounds ? bounds.bottom + 8 : window.innerHeight / 3;
+	if (bounds && top + height > window.innerHeight && bounds.top - height - 8 > 0) {
+		top = bounds.top - height - 8;
+	}
+	editor.style.left = `${left + window.scrollX}px`;
+	editor.style.top = `${top + window.scrollY}px`;
+	textarea.focus();
+	textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+export function isHighlightNoteEditorOpen(): boolean {
+	return noteEditorTargetId !== null;
+}
+
+export function closeHighlightNoteEditor(save: boolean): void {
+	const id = noteEditorTargetId;
+	if (!noteEditor || id === null) return;
+	const text = noteEditorTextarea?.value ?? '';
+	noteEditor.style.display = 'none';
+	noteEditorTargetId = null;
+	if (!save || text.trim() === getHighlightNoteText(highlights, id)) return;
+
+	const next = setHighlightNoteText(highlights, id, text);
+	if (next === highlights) return;
+	updateHighlights(next);
+	applyHighlights();
+	saveHighlights();
+	updateHighlighterMenu();
 }
 
 async function deleteHighlightById(id: string): Promise<void> {
@@ -474,6 +662,9 @@ async function deleteHighlightById(id: string): Promise<void> {
 		? highlights.filter((h: AnyHighlightData) => h.groupId !== target.groupId)
 		: highlights.filter((h: AnyHighlightData) => h.id !== id);
 	if (next.length === highlights.length) return;
+	if (noteEditorTargetId !== null && !next.some((h: AnyHighlightData) => h.id === noteEditorTargetId)) {
+		closeHighlightNoteEditor(false);
+	}
 	updateHighlights(next);
 	hideHighlightDeleteButton();
 	sortHighlights();
@@ -504,6 +695,11 @@ export function markHighlightJustCreated(): void {
 
 function handleHighlightClick(event: MouseEvent) {
 	const target = event.target as Element | null;
+
+	// Clicks inside the note editor are its own business
+	if (target?.closest('.' + NOTE_EDITOR_CLASS)) return;
+	// Clicking elsewhere while editing a note saves it
+	if (isHighlightNoteEditorOpen()) closeHighlightNoteEditor(true);
 
 	// Clicking the remove button, selection button, or a link — let native behavior run.
 	if (target?.closest('.obsidian-highlight-delete, .obsidian-selection-action, a[href]')) return;
@@ -545,6 +741,9 @@ export function handleMouseUp(event: MouseEvent | TouchEvent) {
 		const touch = event.changedTouches[0];
 		target = document.elementFromPoint(touch.clientX, touch.clientY) as Element;
 	}
+
+	// Selecting text while typing a note must not create a highlight
+	if (target?.closest?.('.' + NOTE_EDITOR_CLASS)) return;
 
 	const selection = window.getSelection();
 	if (selection && !selection.isCollapsed) {
@@ -600,7 +799,7 @@ export function planHighlightOverlayRects(target: Element | null, highlight: Any
 	if (highlight.type === 'text') {
 		// Text highlights re-anchor themselves (XPath, then content fallback),
 		// so they don't need a resolved target element.
-		renderTextHighlight(highlight);
+		renderTextHighlight(highlight, groupHasNote(highlight.id));
 		return;
 	}
 	// Element highlights position an overlay over the target, so a stale XPath
@@ -617,6 +816,9 @@ export function planHighlightOverlayRects(target: Element | null, highlight: Any
 	overlay.style.height = `${rect.height + 4}px`;
 	if (highlight.notes && highlight.notes.length > 0) {
 		overlay.setAttribute('data-notes', JSON.stringify(highlight.notes));
+	}
+	if (groupHasNote(highlight.id)) {
+		overlay.classList.add('obsidian-highlight-overlay-annotated');
 	}
 	const atPoint = document.elementFromPoint(rect.left, rect.top);
 	if (atPoint && isDarkColor(getEffectiveBackgroundColor(atPoint as HTMLElement))) {

@@ -2,6 +2,9 @@
 	"activity": {
 		"message": "活动"
 	},
+	"addHighlightNote": {
+		"message": "批注"
+	},
 	"addModel": {
 		"message": "+ 添加模型"
 	},
@@ -215,6 +218,9 @@
 	"edit": {
 		"message": "编辑"
 	},
+	"editHighlightNote": {
+		"message": "编辑批注"
+	},
 	"editModel": {
 		"message": "编辑模型"
 	},
@@ -365,6 +371,12 @@
 	},
 	"highlightInline": {
 		"message": "高亮页面内容"
+	},
+	"highlightNote": {
+		"message": "高亮批注"
+	},
+	"highlightNotePlaceholder": {
+		"message": "添加批注…（⌘/Ctrl+Enter 保存）"
 	},
 	"highlightPage": {
 		"message": "高亮页面"
