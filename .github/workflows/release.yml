@@ -1,0 +1,76 @@
+name: Release
+
+# Builds the Chrome, Firefox and Safari extension zips and attaches them to a
+# GitHub Release.
+#   - Push a tag like `v1.7.2` to release that tag.
+#   - Or run manually from the Actions tab with an existing tag.
+# The tag version must match package.json and all three manifests.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release (e.g. v1.7.2)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      # Template fixtures in the test suite expect US Pacific time
+      TZ: America/Los_Angeles
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify tag matches versions
+        run: |
+          set -euo pipefail
+          expected="${RELEASE_TAG#v}"
+          status=0
+          for file in package.json src/manifest.chrome.json src/manifest.firefox.json src/manifest.safari.json; do
+            actual="$(node -p "require('./$file').version")"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error file=$file::version $actual does not match tag $RELEASE_TAG"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          files: builds/*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
