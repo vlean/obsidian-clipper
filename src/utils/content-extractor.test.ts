@@ -47,3 +47,21 @@ describe('processHighlights — highlight-inline', () => {
 		expect(mark!.querySelector('a')).not.toBeNull();
 	});
 });
+
+describe('initializePageContent highlight records', () => {
+	test('{{highlights}} carries notes from full highlight records', async () => {
+		const { initializePageContent } = await import('./content-extractor');
+		const record: TextHighlightData = {
+			id: '1700000000000', type: 'text', xpath: '', content: 'Key sentence',
+			startOffset: 0, endOffset: 12, notes: ['Why it matters'],
+		};
+		const result = await initializePageContent(
+			'<p>Key sentence</p>', '', {}, 'https://example.com/a', {}, '',
+			[{ ...record, notes: undefined }], 'Title', '', '', '', '', '', '', 0, '', [], [record],
+		);
+		const exported = JSON.parse(result!.currentVariables['{{highlights}}']);
+		expect(exported).toEqual([
+			expect.objectContaining({ text: 'Key sentence', notes: ['Why it matters'] }),
+		]);
+	});
+});

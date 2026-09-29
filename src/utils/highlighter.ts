@@ -1093,6 +1093,12 @@ export function getHighlights(): string[] {
 	return highlights.map(h => h.content);
 }
 
+// Full highlight records (ids, groups, notes, text anchors) for clipping.
+// A structured clone so callers can't mutate highlighter state.
+export function getHighlightRecords(): AnyHighlightData[] {
+	return JSON.parse(JSON.stringify(highlights));
+}
+
 // Group highlights that share a groupId (produced by a single multi-block
 // selection) so export/display treats them as one logical highlight. Ungrouped
 // highlights pass through as single-element arrays. Order is preserved.

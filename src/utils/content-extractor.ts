@@ -50,6 +50,8 @@ interface ContentResponse {
 	schemaOrgData: any;
 	fullHtml: string;
 	highlights: AnyHighlightData[];
+	/** Full records with ids, groups and notes (content scripts send both) */
+	highlightRecords?: AnyHighlightData[];
 	title: string;
 	author: string;
 	description: string;
@@ -95,6 +97,9 @@ async function sendExtractRequest(tabId: number): Promise<ContentResponse> {
 		} else {
 			response.highlights = [];
 		}
+		response.highlightRecords = Array.isArray(response.highlightRecords)
+			? response.highlightRecords.filter(h => h && typeof h === 'object' && typeof h.content === 'string')
+			: [];
 		return response;
 	}
 
@@ -141,7 +146,8 @@ export async function initializePageContent(
 	site: string,
 	wordCount: number,
 	language: string,
-	metaTags: { name?: string | null; property?: string | null; content: string | null }[]
+	metaTags: { name?: string | null; property?: string | null; content: string | null }[],
+	highlightRecords: AnyHighlightData[] = []
 ) {
 	try {
 		currentUrl = currentUrl.replace(/#:~:text=[^&]+(&|$)/, '');
@@ -159,7 +165,9 @@ export async function initializePageContent(
 
 		const markdownBody = createMarkdownContent(content, currentUrl);
 
-		const highlightsData = collapseGroupsForExport(highlights, c => createMarkdownContent(c, currentUrl));
+		// Prefer full records so {{highlights}} carries notes, groups and real timestamps
+		const exportSource = highlightRecords.length > 0 ? highlightRecords : highlights;
+		const highlightsData = collapseGroupsForExport(exportSource, c => createMarkdownContent(c, currentUrl));
 
 		const noteName = sanitizeFileName(title);
 
