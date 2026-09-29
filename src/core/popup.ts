@@ -25,7 +25,9 @@ import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i
 import { formatPropertyValue } from '../utils/shared';
 import { buildOutlineDocumentText, normalizeOutlineTitle } from '../utils/outline-markdown';
 import { getOutlineErrorMessageKey } from '../utils/outline-client';
-import { OUTLINE_ACTIONS, OutlineCreateDocumentResponse } from '../utils/outline-service';
+import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse } from '../utils/outline-service';
+import { getOutlineDocumentMapping, OutlineDocumentMapping } from '../utils/outline-documents-store';
+import { isDailyBehavior, tracksSourceUrl, OutlineSaveMode } from '../utils/outline-sync';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -702,6 +704,10 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 			setupMetadataToggle();
 		}
 
+		// Template behavior decides whether "Update in Outline" applies
+		determineMainAction();
+		refreshOutlineMapping(tab.url);
+
 		const extractedData = await extractionPromise;
 		if (extractedData) {
 			const currentUrl = tab.url;
@@ -1292,9 +1298,13 @@ function determineMainAction() {
 
 	// Only offer Outline as a secondary action once a collection is configured
 	const outlineConfigured = Boolean(loadedSettings.outline?.collectionId);
+	// Page was clipped to Outline before and the template updates in place
+	const outlineUpdates = outlineConfigured && Boolean(currentOutlineMapping)
+		&& Boolean(currentTemplate && tracksSourceUrl(currentTemplate.behavior));
+	const outlineActionKey = outlineUpdates ? 'updateInOutline' : 'addToOutline';
 	const addOutlineAction = () => {
 		if (outlineConfigured) {
-			addSecondaryAction(secondaryActions, 'addToOutline', () => handleClipOutline());
+			addSecondaryAction(secondaryActions, outlineActionKey, () => handleClipOutline());
 		}
 	};
 
@@ -1317,9 +1327,12 @@ function determineMainAction() {
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			break;
 		case 'addToOutline':
-			mainButton.textContent = getMessage('addToOutline');
+			mainButton.textContent = getMessage(outlineActionKey);
 			mainButton.onclick = () => handleClipOutline();
 			// Add direct actions to secondary
+			if (outlineUpdates) {
+				addSecondaryAction(secondaryActions, 'saveAsNewOutlineDocument', () => handleClipOutline({ forceCreate: true }));
+			}
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
@@ -1347,8 +1360,33 @@ async function ensureInterpreterFinished(): Promise<void> {
 }
 
 let outlineSaveInProgress = false;
+let currentOutlineMapping: OutlineDocumentMapping | null = null;
+let outlineMappingUrl: string | null = null;
 
-async function handleClipOutline(): Promise<void> {
+async function refreshOutlineMapping(pageUrl: string): Promise<void> {
+	if (!loadedSettings?.outline?.collectionId || !pageUrl) return;
+	outlineMappingUrl = pageUrl;
+	try {
+		const mapping = await getOutlineDocumentMapping(pageUrl, loadedSettings.outline.baseUrl);
+		// Ignore stale lookups if the tab navigated meanwhile
+		if (outlineMappingUrl !== pageUrl) return;
+		if (mapping?.documentId !== currentOutlineMapping?.documentId) {
+			currentOutlineMapping = mapping;
+			determineMainAction();
+		}
+	} catch (error) {
+		console.error('Failed to read Outline document mapping:', error);
+	}
+}
+
+const OUTLINE_SAVED_MESSAGE: Record<OutlineSaveMode, string> = {
+	created: 'savedToOutline',
+	updated: 'updatedInOutline',
+	appended: 'updatedInOutline',
+	prepended: 'updatedInOutline',
+};
+
+async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolean } = {}): Promise<void> {
 	if (!currentTemplate || outlineSaveInProgress) return;
 
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
@@ -1373,7 +1411,12 @@ async function handleClipOutline(): Promise<void> {
 		const frontmatter = await generateFrontmatter(properties);
 		const tabInfo = await getCurrentTabInfo();
 
-		const title = normalizeOutlineTitle(noteNameField?.value || tabInfo.title || '');
+		const behavior = currentTemplate.behavior || 'create';
+		// Daily behaviors target a document titled with today's date, like a daily note
+		const rawTitle = isDailyBehavior(behavior)
+			? dayjs().format('YYYY-MM-DD')
+			: (noteNameField?.value || tabInfo.title || '');
+		const title = normalizeOutlineTitle(rawTitle);
 		const text = buildOutlineDocumentText(frontmatter, noteContentField.value);
 
 		if (clipButton) {
@@ -1382,10 +1425,13 @@ async function handleClipOutline(): Promise<void> {
 		}
 
 		const response = await browser.runtime.sendMessage({
-			action: OUTLINE_ACTIONS.createDocument,
+			action: OUTLINE_ACTIONS.saveDocument,
 			title,
 			text,
-		}) as OutlineCreateDocumentResponse | undefined;
+			behavior,
+			sourceUrl: tabInfo.url,
+			forceCreate,
+		}) as OutlineSaveDocumentResponse | undefined;
 
 		if (!response || !response.success) {
 			const errorKey = getOutlineErrorMessageKey(response?.errorKind);
@@ -1398,7 +1444,11 @@ async function handleClipOutline(): Promise<void> {
 		await incrementStat('addToOutline', generalSettings.outline.collectionName, '', tabInfo.url, tabInfo.title);
 
 		if (clipButton) {
-			clipButton.textContent = getMessage('savedToOutline');
+			clipButton.textContent = getMessage(OUTLINE_SAVED_MESSAGE[response.mode] ?? 'savedToOutline');
+		}
+		if (tabInfo.url) {
+			// Next clip of this page updates the document
+			refreshOutlineMapping(tabInfo.url);
 		}
 		if (!isSidePanel) {
 			setTimeout(() => window.close(), 500);
@@ -1510,6 +1560,8 @@ function getActionIcon(actionType: string): string {
 		case 'saveFile': return 'file-down';
 		case 'addToObsidian': return 'pen-line';
 		case 'addToOutline': return 'book-open';
+		case 'updateInOutline': return 'book-open';
+		case 'saveAsNewOutlineDocument': return 'file-plus';
 		default: return 'plus';
 	}
 }

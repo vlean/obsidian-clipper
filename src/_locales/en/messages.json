@@ -1000,6 +1000,9 @@
 	"save": {
 		"message": "Save"
 	},
+	"saveAsNewOutlineDocument": {
+		"message": "Save as new Outline document"
+	},
 	"saveBehaviorDescription": {
 		"message": "Choose the default option for saving pages. Alternate options appear in the dropdown menu next to the main button."
 	},
@@ -1152,6 +1155,12 @@
 	},
 	"updateAvailable": {
 		"message": "An update is available."
+	},
+	"updatedInOutline": {
+		"message": "Updated in Outline"
+	},
+	"updateInOutline": {
+		"message": "Update in Outline"
 	},
 	"usingLatestVersion": {
 		"message": "You are using the latest version."

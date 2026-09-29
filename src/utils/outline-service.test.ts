@@ -16,8 +16,8 @@ function pick(store: Record<string, unknown>, keys: string | string[]) {
 vi.mock('./browser-polyfill', () => ({
 	default: {
 		storage: {
-			sync: { get: async (keys: string | string[]) => pick(syncStore, keys), set: async () => {} },
-			local: { get: async (keys: string | string[]) => pick(localStore, keys), set: async () => {} },
+			sync: { get: async (keys: string | string[]) => pick(syncStore, keys), set: async (items: Record<string, unknown>) => { Object.assign(syncStore, items); } },
+			local: { get: async (keys: string | string[]) => pick(localStore, keys), set: async (items: Record<string, unknown>) => { Object.assign(localStore, items); } },
 		},
 		tabs: { create: tabsCreate },
 		runtime: { sendMessage: async () => ({}) },
@@ -58,12 +58,12 @@ describe('handleOutlineMessage', () => {
 		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'Title', url: '/doc/title-abc' } }));
 
 		const response = await handleOutlineMessage({
-			action: OUTLINE_ACTIONS.createDocument,
+			action: OUTLINE_ACTIONS.saveDocument,
 			title: 'Title',
 			text: 'Body',
 		});
 
-		expect(response).toEqual({ success: true, id: 'd1', title: 'Title', url: 'https://wiki.example.com/doc/title-abc' });
+		expect(response).toEqual({ success: true, id: 'd1', title: 'Title', url: 'https://wiki.example.com/doc/title-abc', mode: 'created' });
 		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
 		expect(url).toBe('https://wiki.example.com/api/documents.create');
 		expect((init.headers as Record<string, string>).Authorization).toBe('Bearer ol_api_secret');
@@ -73,35 +73,98 @@ describe('handleOutlineMessage', () => {
 		expect(tabsCreate).toHaveBeenCalledWith({ url: 'https://wiki.example.com/doc/title-abc' });
 	});
 
+	test('second clip of the same URL overwrites the mapped document', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'First', url: '/doc/first' } }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'First', url: '/doc/first' } }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'Second', url: '/doc/first' } }));
+
+		const first = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'First', text: 'v1',
+			behavior: 'create', sourceUrl: 'https://example.com/post?utm_source=x',
+		});
+		expect(first).toMatchObject({ success: true, mode: 'created' });
+		expect(localStore.outline_documents).toMatchObject({
+			'https://example.com/post': { documentId: 'd1', baseUrl: 'https://wiki.example.com' },
+		});
+
+		const second = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'Second', text: 'v2',
+			behavior: 'create', sourceUrl: 'https://example.com/post',
+		});
+		expect(second).toMatchObject({ success: true, mode: 'updated', id: 'd1' });
+		expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+			'https://wiki.example.com/api/documents.create',
+			'https://wiki.example.com/api/documents.info',
+			'https://wiki.example.com/api/documents.update',
+		]);
+		expect(JSON.parse((fetchMock.mock.calls[2][1] as RequestInit).body as string)).toEqual({
+			id: 'd1', text: 'v2', title: 'Second',
+		});
+	});
+
+	test('forceCreate ignores the existing mapping and remaps the URL', async () => {
+		localStore.outline_documents = {
+			'https://example.com/post': { documentId: 'old', baseUrl: 'https://wiki.example.com', url: '', title: '', updatedAt: '' },
+		};
+		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'new', title: 'T', url: '/doc/new' } }));
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', sourceUrl: 'https://example.com/post', forceCreate: true,
+		});
+		expect(response).toMatchObject({ success: true, mode: 'created', id: 'new' });
+		expect(fetchMock.mock.calls[0][0]).toBe('https://wiki.example.com/api/documents.create');
+		expect((localStore.outline_documents as any)['https://example.com/post'].documentId).toBe('new');
+	});
+
+	test('append behaviors do not create URL mappings', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [] }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'Reading list', url: '/doc/r' } }));
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'Reading list', text: 'x',
+			behavior: 'append-specific', sourceUrl: 'https://example.com/post',
+		});
+		expect(response).toMatchObject({ success: true, mode: 'created' });
+		expect(localStore.outline_documents).toBeUndefined();
+	});
+
+	test('unknown behaviors fall back to create', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', behavior: 'bogus',
+		});
+		expect(response).toMatchObject({ success: true, mode: 'created' });
+	});
+
 	test('does not open the document when silent open is enabled', async () => {
 		syncStore.general_settings = { silentOpen: true };
 		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
-		await handleOutlineMessage({ action: OUTLINE_ACTIONS.createDocument, title: 'T', text: '' });
+		await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '' });
 		expect(tabsCreate).not.toHaveBeenCalled();
 	});
 
 	test('allows overriding the collection per request', async () => {
 		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
-		await handleOutlineMessage({ action: OUTLINE_ACTIONS.createDocument, title: 'T', text: '', collectionId: 'other' });
+		await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', collectionId: 'other' });
 		expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).collectionId).toBe('other');
 	});
 
 	test('returns a config error when the API key is missing', async () => {
 		delete localStore.outline_api_key;
-		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.createDocument, title: 'T', text: '' });
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '' });
 		expect(response).toMatchObject({ success: false, errorKind: 'config' });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	test('returns API errors as structured failures', async () => {
 		fetchMock.mockResolvedValueOnce(jsonResponse({ ok: false, message: 'Authentication required' }, 401));
-		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.createDocument, title: 'T', text: '' });
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '' });
 		expect(response).toEqual({ success: false, errorKind: 'unauthorized', error: 'Authentication required' });
 		expect(tabsCreate).not.toHaveBeenCalled();
 	});
 
 	test('validates the create request payload', async () => {
-		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.createDocument, title: 42 });
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 42 });
 		expect(response).toMatchObject({ success: false, errorKind: 'validation' });
 	});
 

@@ -1000,6 +1000,9 @@
 	"save": {
 		"message": "保存"
 	},
+	"saveAsNewOutlineDocument": {
+		"message": "另存为新的 Outline 文档"
+	},
 	"saveBehaviorDescription": {
 		"message": "选择保存页面的默认选项。其他选项将出现在主按钮旁边的下拉菜单中。"
 	},
@@ -1152,6 +1155,12 @@
 	},
 	"updateAvailable": {
 		"message": "有可用更新。"
+	},
+	"updatedInOutline": {
+		"message": "已更新到 Outline"
+	},
+	"updateInOutline": {
+		"message": "更新到 Outline"
 	},
 	"usingLatestVersion": {
 		"message": "您正在使用最新版本。"

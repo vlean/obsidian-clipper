@@ -237,3 +237,96 @@ export async function createOutlineDocument(
 	}
 	return { id: result.data.id, title: result.data.title, url: result.data.url };
 }
+
+interface RawOutlineDocument {
+	id: string;
+	title: string;
+	url: string;
+	collectionId?: string | null;
+	archivedAt?: string | null;
+	deletedAt?: string | null;
+}
+
+function toOutlineDocument(raw: RawOutlineDocument): OutlineDocument {
+	return { id: raw.id, title: raw.title, url: raw.url };
+}
+
+function isLiveDocument(raw: RawOutlineDocument | undefined | null): raw is RawOutlineDocument {
+	return Boolean(raw && typeof raw.id === 'string' && !raw.archivedAt && !raw.deletedAt);
+}
+
+/**
+ * Fetches a document by id. Returns null when it no longer exists or has been
+ * archived/deleted, so callers can fall back to creating a new one.
+ */
+export async function getOutlineDocument(
+	config: OutlineConfig,
+	id: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineDocument | null> {
+	try {
+		const result = await outlineRequest<{ data?: RawOutlineDocument }>(config, 'documents.info', { id }, options);
+		return isLiveDocument(result.data) ? toOutlineDocument(result.data) : null;
+	} catch (error) {
+		// 403 covers documents that were moved somewhere the key can't see
+		if (error instanceof OutlineApiError && (error.kind === 'notFound' || error.kind === 'forbidden')) {
+			return null;
+		}
+		throw error;
+	}
+}
+
+/** Finds a document in a collection whose title matches exactly (case-insensitive). */
+export async function findOutlineDocumentByTitle(
+	config: OutlineConfig,
+	title: string,
+	collectionId: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineDocument | null> {
+	const wanted = title.trim().toLowerCase();
+	if (!wanted) return null;
+	const result = await outlineRequest<{ data?: RawOutlineDocument[] }>(
+		config,
+		'documents.search_titles',
+		{ query: title.trim(), collectionId, limit: 25 },
+		options,
+	);
+	const match = (Array.isArray(result.data) ? result.data : []).find(doc =>
+		isLiveDocument(doc)
+		&& (!doc.collectionId || doc.collectionId === collectionId)
+		&& String(doc.title ?? '').trim().toLowerCase() === wanted
+	);
+	return match ? toOutlineDocument(match) : null;
+}
+
+export type OutlineEditMode = 'replace' | 'append' | 'prepend';
+
+export interface UpdateOutlineDocumentParams {
+	id: string;
+	text: string;
+	editMode: OutlineEditMode;
+	/** Only applied for `replace` */
+	title?: string;
+}
+
+export async function updateOutlineDocument(
+	config: OutlineConfig,
+	params: UpdateOutlineDocumentParams,
+	options?: OutlineRequestOptions,
+): Promise<OutlineDocument> {
+	const body: Record<string, unknown> = { id: params.id };
+	if (params.editMode === 'replace') {
+		// Omitting editMode replaces the text, which also works on older servers
+		body.text = params.text;
+		if (params.title) body.title = params.title;
+	} else {
+		// Keep appended/prepended clips visually separate from existing content
+		body.text = params.editMode === 'append' ? `\n\n${params.text}` : `${params.text}\n\n`;
+		body.editMode = params.editMode;
+	}
+	const result = await outlineRequest<{ data?: RawOutlineDocument }>(config, 'documents.update', body, options);
+	if (!result.data || typeof result.data.id !== 'string') {
+		throw new OutlineApiError('server', 'Unexpected response from documents.update');
+	}
+	return toOutlineDocument(result.data);
+}

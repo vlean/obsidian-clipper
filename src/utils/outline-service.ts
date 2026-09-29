@@ -8,17 +8,20 @@ import {
 	OutlineCollection,
 	OutlineConfig,
 	OutlineErrorKind,
-	createOutlineDocument,
 	getOutlineAuthInfo,
 	getOutlineDocumentUrl,
 	listOutlineCollections,
 } from './outline-client';
 import { OUTLINE_API_KEY_STORAGE_KEY, sanitizeOutlineSettings } from './storage-utils';
-import { OutlineSettings } from '../types/types';
+import { OutlineSettings, Template } from '../types/types';
+import { OutlineSaveMode, saveOutlineDocument, tracksSourceUrl } from './outline-sync';
+import { getOutlineDocumentMapping, setOutlineDocumentMapping } from './outline-documents-store';
+
+const VALID_BEHAVIORS: Template['behavior'][] = ['create', 'append-specific', 'append-daily', 'prepend-specific', 'prepend-daily', 'overwrite'];
 
 export const OUTLINE_ACTIONS = {
 	testConnection: 'outlineTestConnection',
-	createDocument: 'outlineCreateDocument',
+	saveDocument: 'outlineSaveDocument',
 } as const;
 
 export interface OutlineFailure {
@@ -31,14 +34,20 @@ export type OutlineTestConnectionResponse =
 	| { success: true; userName: string; teamName: string; collections: OutlineCollection[] }
 	| OutlineFailure;
 
-export type OutlineCreateDocumentResponse =
-	| { success: true; id: string; title: string; url: string }
+export type OutlineSaveDocumentResponse =
+	| { success: true; id: string; title: string; url: string; mode: OutlineSaveMode }
 	| OutlineFailure;
 
-export interface OutlineCreateDocumentRequest {
-	action: typeof OUTLINE_ACTIONS.createDocument;
+export interface OutlineSaveDocumentRequest {
+	action: typeof OUTLINE_ACTIONS.saveDocument;
 	title: string;
 	text: string;
+	/** Template behavior; defaults to `create` */
+	behavior?: Template['behavior'];
+	/** Page the clip came from, used to find the document to update */
+	sourceUrl?: string;
+	/** Always create a new document, ignoring any existing one */
+	forceCreate?: boolean;
 	/** Overrides the configured default collection */
 	collectionId?: string;
 }
@@ -76,25 +85,43 @@ export async function handleOutlineTestConnection(): Promise<OutlineTestConnecti
 	}
 }
 
-export async function handleOutlineCreateDocument(request: OutlineCreateDocumentRequest): Promise<OutlineCreateDocumentResponse> {
+export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequest): Promise<OutlineSaveDocumentResponse> {
 	try {
 		const { settings, config, silentOpen } = await loadOutlineState();
-		const document = await createOutlineDocument(config, {
+		const behavior = request.behavior && VALID_BEHAVIORS.includes(request.behavior) ? request.behavior : 'create';
+		const sourceUrl = typeof request.sourceUrl === 'string' ? request.sourceUrl : '';
+		const tracked = tracksSourceUrl(behavior) && Boolean(sourceUrl);
+		const mapping = tracked ? await getOutlineDocumentMapping(sourceUrl, settings.baseUrl) : null;
+
+		const { document, mode } = await saveOutlineDocument(config, {
 			title: request.title,
 			text: request.text,
+			behavior,
 			collectionId: request.collectionId || settings.collectionId,
 			publish: settings.publish,
+			mappedDocumentId: mapping?.documentId,
+			forceCreate: Boolean(request.forceCreate),
 		});
 		const url = getOutlineDocumentUrl(settings.baseUrl, document.url);
 
-		// Mirror the Obsidian flow: open the new note unless "silent open" is enabled
+		if (tracked) {
+			await setOutlineDocumentMapping(sourceUrl, {
+				documentId: document.id,
+				baseUrl: settings.baseUrl,
+				url,
+				title: document.title,
+				updatedAt: new Date().toISOString(),
+			});
+		}
+
+		// Mirror the Obsidian flow: open the note unless "silent open" is enabled
 		if (!silentOpen) {
 			browser.tabs.create({ url }).catch(error => console.error('Failed to open Outline document:', error));
 		}
 
-		return { success: true, id: document.id, title: document.title, url };
+		return { success: true, id: document.id, title: document.title, url, mode };
 	} catch (error) {
-		console.error('Failed to create Outline document:', error);
+		console.error('Failed to save Outline document:', error);
 		return toFailure(error);
 	}
 }
@@ -107,11 +134,11 @@ export function handleOutlineMessage(request: { action?: string } & Record<strin
 	switch (request.action) {
 		case OUTLINE_ACTIONS.testConnection:
 			return handleOutlineTestConnection();
-		case OUTLINE_ACTIONS.createDocument:
+		case OUTLINE_ACTIONS.saveDocument:
 			if (typeof request.title !== 'string' || typeof request.text !== 'string') {
 				return Promise.resolve({ success: false, errorKind: 'validation', error: 'Missing title or text' } satisfies OutlineFailure);
 			}
-			return handleOutlineCreateDocument(request as unknown as OutlineCreateDocumentRequest);
+			return handleOutlineSaveDocument(request as unknown as OutlineSaveDocumentRequest);
 		default:
 			return null;
 	}
