@@ -87,12 +87,16 @@ module.exports = (env, argv) => {
 							module: false
 						},
 						format: {
-							// Extension JS is emitted as UTF-8 (webpack's default output
-							// encoding), which Chrome requires. Non-ASCII source (e.g.
-							// localized strings) is valid in UTF-8 JS, so we let Terser
-							// keep it verbatim rather than \u-escaping every character,
-							// which trims bytes from the string-heavy bundles.
-							ascii_only: false,
+							// Escape all non-ASCII as \uXXXX. This MUST stay true:
+							// content.js, content-extract.js and reader-script.js are
+							// injected by path via chrome.scripting.executeScript({ files }),
+							// and Chrome's file loader rejects any script file containing
+							// 4-byte UTF-8 sequences (code points > U+FFFF, e.g. the
+							// mathematical-script letters pulled in by defuddle/highlight.js)
+							// with "It isn't UTF-8 encoded." — which silently breaks reader
+							// mode and page-content extraction. ascii_only:true keeps the
+							// emitted files pure ASCII so every browser accepts them.
+							ascii_only: true,
 							comments: false,
 							ecma: 2020
 						},
