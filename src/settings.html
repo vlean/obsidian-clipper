@@ -212,6 +212,63 @@
 											</div>
 										</div>
 									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="outline-frontmatter-style" data-i18n="outlineFrontmatterStyle">Properties display</label>
+											<div class="setting-item-description" data-i18n="outlineFrontmatterStyleDescription">How page properties (source, author, dates…) appear at the top of the document. Outline has no document properties, so they are part of the text.</div>
+										</div>
+										<div class="setting-item-control">
+											<select id="outline-frontmatter-style">
+												<option value="table" data-i18n="outlineFrontmatterTable">Table</option>
+												<option value="callout" data-i18n="outlineFrontmatterCallout">Info block</option>
+												<option value="code" data-i18n="outlineFrontmatterCode">YAML code block</option>
+											</select>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="outline-paragraph-spacing-toggle" data-i18n="outlineParagraphSpacing">Add space between paragraphs</label>
+											<div class="setting-item-description" data-i18n="outlineParagraphSpacingDescription">Outline shows paragraphs without spacing unless separated by an empty line. Adds an empty paragraph between blocks for easier reading.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container">
+												<input type="checkbox" id="outline-paragraph-spacing-toggle" />
+											</div>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="outline-bilingual-toggle" data-i18n="outlineBilingualLayout">Bilingual page layout</label>
+											<div class="setting-item-description" data-i18n="outlineBilingualLayoutDescription">On pages translated inline (e.g. Immersive Translate), put each translation on its own line and separate translated headings with &quot; / &quot;.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container">
+												<input type="checkbox" id="outline-bilingual-toggle" />
+											</div>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="outline-published-date-toggle" data-i18n="outlineUsePublishedDate">Use published date as creation date</label>
+											<div class="setting-item-description" data-i18n="outlineUsePublishedDateDescription">Backdate new documents to the page's &quot;published&quot; property, so they sort by publication date in Outline.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container">
+												<input type="checkbox" id="outline-published-date-toggle" />
+											</div>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal mod-toggle">
+										<div class="setting-item-info">
+											<label for="outline-path-parent-toggle" data-i18n="outlinePathAsParent">Use note location as parent documents</label>
+											<div class="setting-item-description" data-i18n="outlinePathAsParentDescription">Nest new documents under the template's note location (e.g. Clippings/Tech), creating missing parent documents. Parent documents are always published.</div>
+										</div>
+										<div class="setting-item-control">
+											<div class="checkbox-container">
+												<input type="checkbox" id="outline-path-parent-toggle" />
+											</div>
+										</div>
+									</div>
 								</div>
 							</div>
 							<div class="setting-group" id="hotkeys-subsection">

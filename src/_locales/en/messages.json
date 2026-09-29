@@ -623,6 +623,12 @@
 	"outlineBaseUrlDescription": {
 		"message": "Use https://app.getoutline.com or the URL of your self-hosted instance."
 	},
+	"outlineBilingualLayout": {
+		"message": "Bilingual page layout"
+	},
+	"outlineBilingualLayoutDescription": {
+		"message": "On pages translated inline (e.g. Immersive Translate), put each translation on its own line and separate translated headings with \" / \"."
+	},
 	"outlineCollection": {
 		"message": "Collection"
 	},
@@ -684,11 +690,44 @@
 	"outlineErrorUnauthorized": {
 		"message": "The Outline API key is invalid or has been revoked."
 	},
+	"outlineFrontmatterCallout": {
+		"message": "Info block"
+	},
+	"outlineFrontmatterCode": {
+		"message": "YAML code block"
+	},
+	"outlineFrontmatterStyle": {
+		"message": "Properties display"
+	},
+	"outlineFrontmatterStyleDescription": {
+		"message": "How page properties (source, author, dates…) appear at the top of the document. Outline has no document properties, so they are part of the text."
+	},
+	"outlineFrontmatterTable": {
+		"message": "Table"
+	},
 	"outlineInvalidUrl": {
 		"message": "Invalid server URL."
 	},
 	"outlineNoCollections": {
 		"message": "No collections found"
+	},
+	"outlineParagraphSpacing": {
+		"message": "Add space between paragraphs"
+	},
+	"outlineParagraphSpacingDescription": {
+		"message": "Outline shows paragraphs without spacing unless separated by an empty line. Adds an empty paragraph between blocks for easier reading."
+	},
+	"outlinePathAsParent": {
+		"message": "Use note location as parent documents"
+	},
+	"outlinePathAsParentDescription": {
+		"message": "Nest new documents under the template's note location (e.g. Clippings/Tech), creating missing parent documents. Parent documents are always published."
+	},
+	"outlinePropertyName": {
+		"message": "Property"
+	},
+	"outlinePropertyValue": {
+		"message": "Value"
 	},
 	"outlinePublish": {
 		"message": "Publish immediately"
@@ -710,6 +749,12 @@
 	},
 	"outlineUploadImagesDescription": {
 		"message": "Store images from the page as Outline attachments, so they keep working if the original site removes them. Images that can't be fetched stay as links."
+	},
+	"outlineUsePublishedDate": {
+		"message": "Use published date as creation date"
+	},
+	"outlineUsePublishedDateDescription": {
+		"message": "Backdate new documents to the page's \"published\" property, so they sort by publication date in Outline."
 	},
 	"overwriteNote": {
 		"message": "Overwrite note"

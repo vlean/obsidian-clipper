@@ -67,6 +67,16 @@ export interface OutlineSettings {
 	uploadImages: boolean;
 	/** Post highlight notes as comments anchored to the highlighted text */
 	syncComments: boolean;
+	/** Insert empty paragraphs between blocks (Outline renders paragraphs with no margin) */
+	paragraphSpacing: boolean;
+	/** How the frontmatter is shown at the top of documents */
+	frontmatterStyle: 'table' | 'callout' | 'code';
+	/** Separate inline translations on bilingual pages */
+	bilingualLayout: boolean;
+	/** Use the page's `published` property as the document creation date */
+	usePublishedDate: boolean;
+	/** Map the template's note location (a/b/c) to nested parent documents */
+	pathAsParent: boolean;
 }
 
 export interface ReaderSettings {

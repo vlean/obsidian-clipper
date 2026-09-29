@@ -29,6 +29,8 @@ import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse } from '../utils/outline-s
 import { getOutlineDocumentMapping, OutlineDocumentMapping } from '../utils/outline-documents-store';
 import { isDailyBehavior, tracksSourceUrl, OutlineSaveMode } from '../utils/outline-sync';
 import { buildOutlineComments, CommentableHighlight } from '../utils/outline-comments';
+import { getOutlineTextOptions, getPublishedDate } from '../utils/outline-options';
+import { OutlineCollection } from '../utils/outline-client';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -392,6 +394,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 				await initializeUI();
 
 				determineMainAction();
+				initializeOutlineCollectionPicker();
 
 				const showMoreActionsButton = document.getElementById('show-variables');
 				if (showMoreActionsButton) {
@@ -698,6 +701,8 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 			if (matchedTemplate) {
 				console.log('Matched template:', matchedTemplate);
 				currentTemplate = matchedTemplate;
+				outlineCollectionOverride = null;
+				renderOutlineCollectionPicker();
 				updateTemplateDropdown();
 			}
 		}
@@ -1103,6 +1108,9 @@ function refreshPopup() {
 
 function handleTemplateChange(templateId: string) {
 	currentTemplate = templates.find(t => t.id === templateId) || templates[0];
+	// A template switch resets the one-off collection choice to the template's
+	outlineCollectionOverride = null;
+	renderOutlineCollectionPicker();
 	refreshFields(currentTabId!, { checkTemplateTriggers: false });
 }
 
@@ -1366,6 +1374,77 @@ async function ensureInterpreterFinished(): Promise<void> {
 
 let outlineSaveInProgress = false;
 
+// --- Outline collection picker (one-off override for this clip) ---
+
+const OUTLINE_COLLECTIONS_CACHE_KEY = 'outline_collections_cache';
+let outlineCollections: OutlineCollection[] = [];
+let outlineCollectionOverride: string | null = null;
+
+function getSelectedOutlineCollectionId(): string {
+	return outlineCollectionOverride
+		?? currentTemplate?.outlineCollectionId
+		?? generalSettings.outline?.collectionId
+		?? '';
+}
+
+function getSelectedOutlineCollectionName(): string {
+	const id = getSelectedOutlineCollectionId();
+	const known = outlineCollections.find(c => c.id === id)?.name;
+	if (known) return known;
+	if (id && id === currentTemplate?.outlineCollectionId) return currentTemplate.outlineCollectionName || id;
+	return generalSettings.outline?.collectionName || id;
+}
+
+function renderOutlineCollectionPicker(): void {
+	const container = document.getElementById('outline-collection-container');
+	const select = document.getElementById('outline-collection-picker') as HTMLSelectElement | null;
+	if (!container || !select) return;
+	const visible = loadedSettings?.saveBehavior === 'addToOutline' && Boolean(generalSettings.outline?.collectionId);
+	container.style.display = visible ? 'block' : 'none';
+	if (!visible) return;
+	select.setAttribute('aria-label', getMessage('outlineCollection'));
+
+	const selected = getSelectedOutlineCollectionId();
+	const options = [...outlineCollections];
+	if (selected && !options.some(c => c.id === selected)) {
+		options.unshift({ id: selected, name: getSelectedOutlineCollectionName() });
+	}
+	select.textContent = '';
+	for (const collection of options) {
+		const option = document.createElement('option');
+		option.value = collection.id;
+		option.textContent = collection.name;
+		select.appendChild(option);
+	}
+	select.value = selected;
+}
+
+async function initializeOutlineCollectionPicker(): Promise<void> {
+	const select = document.getElementById('outline-collection-picker') as HTMLSelectElement | null;
+	if (!select || !generalSettings.outline?.collectionId) return;
+	select.addEventListener('change', () => {
+		outlineCollectionOverride = select.value;
+	});
+
+	// Show cached collections immediately, then refresh in the background
+	const cached = await getLocalStorage(OUTLINE_COLLECTIONS_CACHE_KEY);
+	if (Array.isArray(cached)) outlineCollections = cached as OutlineCollection[];
+	renderOutlineCollectionPicker();
+	if (loadedSettings?.saveBehavior !== 'addToOutline') return;
+
+	try {
+		const response = await browser.runtime.sendMessage({ action: OUTLINE_ACTIONS.listCollections }) as
+			{ success: boolean; collections?: OutlineCollection[] } | undefined;
+		if (response?.success && Array.isArray(response.collections)) {
+			outlineCollections = response.collections;
+			await setLocalStorage(OUTLINE_COLLECTIONS_CACHE_KEY, outlineCollections);
+			renderOutlineCollectionPicker();
+		}
+	} catch (error) {
+		console.warn('Failed to load Outline collections:', error);
+	}
+}
+
 function htmlToPlainText(html: string): string {
 	return new DOMParser().parseFromString(html, 'text/html').body.textContent || '';
 }
@@ -1426,7 +1505,9 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			? dayjs().format('YYYY-MM-DD')
 			: (noteNameField?.value || tabInfo.title || '');
 		const title = normalizeOutlineTitle(rawTitle);
-		const text = buildOutlineDocumentText(frontmatter, noteContentField.value);
+		const text = buildOutlineDocumentText(frontmatter, noteContentField.value, getOutlineTextOptions(generalSettings.outline));
+		const pathField = document.getElementById('path-name-field') as HTMLInputElement | null;
+		const path = isDailyBehavior(behavior) ? '' : (pathField?.value || '');
 
 		if (clipButton) {
 			clipButton.disabled = true;
@@ -1445,7 +1526,9 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			behavior,
 			sourceUrl: tabInfo.url,
 			forceCreate,
-			collectionId: currentTemplate.outlineCollectionId || undefined,
+			collectionId: getSelectedOutlineCollectionId() || undefined,
+			path,
+			createdAt: getPublishedDate(generalSettings.outline, properties),
 		}) as OutlineSaveDocumentResponse | undefined;
 
 		if (!response || !response.success) {
@@ -1456,9 +1539,7 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			throw new Error(response?.error || 'Outline save failed');
 		}
 
-		const collectionName = currentTemplate.outlineCollectionId
-			? (currentTemplate.outlineCollectionName || currentTemplate.outlineCollectionId)
-			: generalSettings.outline.collectionName;
+		const collectionName = getSelectedOutlineCollectionName();
 		await incrementStat('addToOutline', collectionName, '', tabInfo.url, tabInfo.title);
 
 		// Partial failures (images kept as links, notes not posted) don't fail the save

@@ -623,6 +623,12 @@
 	"outlineBaseUrlDescription": {
 		"message": "使用 https://app.getoutline.com 或自托管实例的地址。"
 	},
+	"outlineBilingualLayout": {
+		"message": "双语网页排版"
+	},
+	"outlineBilingualLayoutDescription": {
+		"message": "对于页内翻译的网页（如沉浸式翻译），把译文放到单独一行，标题的原文和译文用“ / ”分隔。"
+	},
 	"outlineCollection": {
 		"message": "集合"
 	},
@@ -684,11 +690,44 @@
 	"outlineErrorUnauthorized": {
 		"message": "Outline API 密钥无效或已被撤销。"
 	},
+	"outlineFrontmatterCallout": {
+		"message": "信息提示块"
+	},
+	"outlineFrontmatterCode": {
+		"message": "YAML 代码块"
+	},
+	"outlineFrontmatterStyle": {
+		"message": "属性显示方式"
+	},
+	"outlineFrontmatterStyleDescription": {
+		"message": "页面属性（来源、作者、日期等）在文档顶部的显示方式。Outline 没有文档属性，所以它们会写进正文。"
+	},
+	"outlineFrontmatterTable": {
+		"message": "表格"
+	},
 	"outlineInvalidUrl": {
 		"message": "服务器地址无效。"
 	},
 	"outlineNoCollections": {
 		"message": "未找到集合"
+	},
+	"outlineParagraphSpacing": {
+		"message": "段落之间留空"
+	},
+	"outlineParagraphSpacingDescription": {
+		"message": "Outline 中段落之间没有间距，除非用空行隔开。开启后会在段落之间插入空段落，便于阅读。"
+	},
+	"outlinePathAsParent": {
+		"message": "笔记位置映射为父文档"
+	},
+	"outlinePathAsParentDescription": {
+		"message": "把新文档放到模板“笔记位置”对应的父文档下（如 Clippings/技术），缺少的父文档会自动创建，且总是发布状态。"
+	},
+	"outlinePropertyName": {
+		"message": "属性"
+	},
+	"outlinePropertyValue": {
+		"message": "值"
 	},
 	"outlinePublish": {
 		"message": "立即发布"
@@ -710,6 +749,12 @@
 	},
 	"outlineUploadImagesDescription": {
 		"message": "将页面中的图片保存为 Outline 附件，原网站删除图片后仍可显示。无法获取的图片保留为外链。"
+	},
+	"outlineUsePublishedDate": {
+		"message": "用发布时间作为创建时间"
+	},
+	"outlineUsePublishedDateDescription": {
+		"message": "把新文档的创建时间设为页面的“published”属性，在 Outline 中按发布时间排序。"
 	},
 	"overwriteNote": {
 		"message": "覆盖笔记"

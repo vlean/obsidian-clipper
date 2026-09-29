@@ -89,6 +89,7 @@ export interface HighlighterAPI {
 	invalidateHighlightCache: typeof invalidateHighlightCache;
 	repositionHighlights: typeof repositionHighlights;
 	getHighlights: typeof getHighlights;
+	getHighlightRecords: typeof getHighlightRecords;
 	setPageUrl: typeof setPageUrl;
 	setPageTitle: typeof setPageTitle;
 	updatePageDomainSettings: typeof updatePageDomainSettings;

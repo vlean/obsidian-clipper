@@ -12,6 +12,15 @@
 //   and left untouched.
 // - Content inside fenced code blocks and inline code spans is never modified.
 
+import {
+	OutlineFrontmatterStyle,
+	PropertyLabels,
+	addParagraphSpacing,
+	applyBilingualLayout,
+	parseFrontmatterProperties,
+	renderFrontmatterProperties,
+} from './outline-layout';
+
 export const OUTLINE_TITLE_MAX_LENGTH = 100;
 
 type NoticeStyle = 'info' | 'warning' | 'tip' | 'success';
@@ -162,8 +171,32 @@ export function convertMarkdownForOutline(markdown: string): string {
 }
 
 /** Builds the full Outline document text: frontmatter code block + converted body. */
-export function buildOutlineDocumentText(frontmatter: string, body: string): string {
-	return frontmatterToCodeBlock(frontmatter) + convertMarkdownForOutline(body);
+export interface OutlineTextOptions {
+	/** How the frontmatter is shown at the top of the document (default: code) */
+	frontmatterStyle?: OutlineFrontmatterStyle;
+	/** Header labels for the table style */
+	propertyLabels?: PropertyLabels;
+	/** Insert empty paragraphs between blocks for readability (default: off) */
+	paragraphSpacing?: boolean;
+	/** Separate inline translations on bilingual pages (default: off) */
+	bilingualLayout?: boolean;
+}
+
+function renderFrontmatter(frontmatter: string, options: OutlineTextOptions): string {
+	const style = options.frontmatterStyle ?? 'code';
+	if (style === 'code') return frontmatterToCodeBlock(frontmatter);
+	return renderFrontmatterProperties(
+		parseFrontmatterProperties(frontmatter),
+		style,
+		options.propertyLabels ?? { name: 'Property', value: 'Value' },
+	);
+}
+
+/** Builds the full Outline document text: frontmatter + converted body. */
+export function buildOutlineDocumentText(frontmatter: string, body: string, options: OutlineTextOptions = {}): string {
+	const layoutBody = options.bilingualLayout ? applyBilingualLayout(body) : body;
+	const text = renderFrontmatter(frontmatter, options) + convertMarkdownForOutline(layoutBody);
+	return options.paragraphSpacing ? addParagraphSpacing(text) : text;
 }
 
 /** Outline limits titles to 100 characters. */

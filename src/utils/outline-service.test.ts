@@ -77,6 +77,7 @@ describe('handleOutlineMessage', () => {
 
 	test('second clip of the same URL overwrites the mapped document', async () => {
 		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [] })) // source lookup finds nothing
 			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'First', url: '/doc/first' } }))
 			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'First', url: '/doc/first' } }))
 			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'Second', url: '/doc/first' } }));
@@ -96,11 +97,12 @@ describe('handleOutlineMessage', () => {
 		});
 		expect(second).toMatchObject({ success: true, mode: 'updated', id: 'd1' });
 		expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+			'https://wiki.example.com/api/documents.search',
 			'https://wiki.example.com/api/documents.create',
 			'https://wiki.example.com/api/documents.info',
 			'https://wiki.example.com/api/documents.update',
 		]);
-		expect(JSON.parse((fetchMock.mock.calls[2][1] as RequestInit).body as string)).toEqual({
+		expect(JSON.parse((fetchMock.mock.calls[3][1] as RequestInit).body as string)).toEqual({
 			id: 'd1', text: 'v2', title: 'Second',
 		});
 	});
@@ -141,6 +143,7 @@ describe('handleOutlineMessage', () => {
 	test('uploads images and syncs note comments after saving', async () => {
 		syncStore.outline_settings = { ...(syncStore.outline_settings as object), uploadImages: true, syncComments: true };
 		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [] })) // source lookup
 			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // create
 			.mockResolvedValueOnce(jsonResponse({ data: { url: '/api/attachments.redirect?id=a1' } })) // image
 			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // update text
@@ -158,9 +161,9 @@ describe('handleOutlineMessage', () => {
 			comments: { created: 1, anchored: 1, failed: 0 },
 		});
 		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual([
-			'documents.create', 'attachments.createFromUrl', 'documents.update', 'comments.create',
+			'documents.search', 'documents.create', 'attachments.createFromUrl', 'documents.update', 'comments.create',
 		]);
-		expect(JSON.parse((fetchMock.mock.calls[2][1] as RequestInit).body as string).text)
+		expect(JSON.parse((fetchMock.mock.calls[3][1] as RequestInit).body as string).text)
 			.toBe('Intro\n![img](/api/attachments.redirect?id=a1)');
 		expect((localStore.outline_doc_state as any).d1).toMatchObject({
 			uploads: { 'https://cdn.example.org/a.png': '/api/attachments.redirect?id=a1' },
@@ -206,6 +209,58 @@ describe('handleOutlineMessage', () => {
 		expect((response as any).images).toBeUndefined();
 		expect((response as any).comments).toBeUndefined();
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	test('finds a document clipped on another device by its source URL', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [
+				{ document: { id: 'other', title: 'X', url: '/doc/x', collectionId: 'default-col', text: 'mentions https://example.com/post-2' } },
+				{ document: { id: 'd9', title: 'T', url: '/doc/t', collectionId: 'default-col', text: '| source | https://example.com/post |' } },
+			] }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd9', title: 'T', url: '/doc/t' } })) // info
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd9', title: 'T', url: '/doc/t' } })); // update
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: 'v2', sourceUrl: 'https://example.com/post',
+		});
+		expect(response).toMatchObject({ success: true, mode: 'updated', id: 'd9' });
+		expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+			query: '"https://example.com/post"', collectionId: 'default-col', limit: 10,
+		});
+		expect((localStore.outline_documents as any)['https://example.com/post'].documentId).toBe('d9');
+	});
+
+	test('nests new documents under the template path and backdates them', async () => {
+		syncStore.outline_settings = { ...(syncStore.outline_settings as object), pathAsParent: true };
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [] })) // source lookup
+			.mockResolvedValueOnce(jsonResponse({ data: [{ id: 'clip', title: 'Clippings', children: [] }] })) // tree
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'tech', title: 'Tech', url: '/doc/tech' } })) // folder
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })); // clip
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: 'x', sourceUrl: 'https://example.com/a',
+			path: ' Clippings / Tech/', createdAt: '2026-05-08',
+		});
+		expect(response).toMatchObject({ success: true, mode: 'created' });
+		const bodies = fetchMock.mock.calls.map(call => [(call[0] as string).split('/api/')[1], JSON.parse((call[1] as RequestInit).body as string)]);
+		expect(bodies[1]).toEqual(['collections.documents', { id: 'default-col' }]);
+		expect(bodies[2]).toEqual(['documents.create', { title: 'Tech', text: '', collectionId: 'default-col', publish: true, parentDocumentId: 'clip' }]);
+		expect(bodies[3]).toEqual(['documents.create', {
+			title: 'T', text: 'x', collectionId: 'default-col', publish: false,
+			parentDocumentId: 'tech', createdAt: '2026-05-08T00:00:00.000Z',
+		}]);
+	});
+
+	test('ignores the path when nesting is off and future creation dates', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [] }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
+		await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: 'x', sourceUrl: 'https://example.com/a',
+			path: 'Clippings', createdAt: '2999-01-01',
+		});
+		expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({
+			title: 'T', text: 'x', collectionId: 'default-col', publish: false,
+		});
 	});
 
 	test('does not open the document when silent open is enabled', async () => {

@@ -461,6 +461,7 @@ declare global {
 		invalidateHighlightCache: highlighter.invalidateHighlightCache,
 		repositionHighlights: highlighter.repositionHighlights,
 		getHighlights: highlighter.getHighlights,
+		getHighlightRecords: highlighter.getHighlightRecords,
 		setPageUrl: highlighter.setPageUrl,
 		setPageTitle: highlighter.setPageTitle,
 		updatePageDomainSettings: highlighter.updatePageDomainSettings,

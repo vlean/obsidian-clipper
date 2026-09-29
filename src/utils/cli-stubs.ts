@@ -58,6 +58,11 @@ export const generalSettings: Settings = {
 		publish: true,
 		uploadImages: false,
 		syncComments: false,
+		paragraphSpacing: false,
+		frontmatterStyle: 'code',
+		bilingualLayout: false,
+		usePublishedDate: false,
+		pathAsParent: false,
 	},
 };
 

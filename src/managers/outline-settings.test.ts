@@ -15,7 +15,7 @@ vi.mock('../utils/browser-polyfill', () => ({
 	},
 }));
 
-import { generalSettings } from '../utils/storage-utils';
+import { generalSettings, DEFAULT_OUTLINE_SETTINGS } from '../utils/storage-utils';
 import { populateTemplateOutlineCollection } from './outline-settings';
 
 function template(overrides: Partial<Template> = {}): Template {
@@ -37,7 +37,7 @@ beforeEach(() => {
 		<select id="template-outline-collection"></select>
 	</div>`;
 	sendMessage.mockReset();
-	generalSettings.outline = { baseUrl: 'https://wiki.example.com', collectionId: 'inbox', collectionName: 'Inbox', publish: true, uploadImages: true, syncComments: true };
+	generalSettings.outline = { ...DEFAULT_OUTLINE_SETTINGS, baseUrl: 'https://wiki.example.com', collectionId: 'inbox', collectionName: 'Inbox' };
 });
 
 describe('populateTemplateOutlineCollection', () => {

@@ -2,7 +2,13 @@ import Defuddle from 'defuddle/full';
 import browser from './browser-polyfill';
 import { detectBrowser } from './browser-detection';
 import { flattenShadowDom as flattenShadowDomUtil } from './flatten-shadow-dom';
-import { getLocalStorage, setLocalStorage } from './storage-utils';
+import { getLocalStorage, setLocalStorage, loadSettings, incrementStat } from './storage-utils';
+import { generateFrontmatter } from './shared';
+import { buildOutlineDocumentText, normalizeOutlineTitle } from './outline-markdown';
+import { buildOutlineComments } from './outline-comments';
+import { getOutlineTextOptions, getPublishedDate } from './outline-options';
+import { getOutlineErrorMessageKey } from './outline-client';
+import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse } from './outline-service';
 import hljs from 'highlight.js';
 import knapSyntax from 'knap/highlightjs';
 import { getDomain } from './string-utils';
@@ -264,6 +270,7 @@ export class Reader {
 		clipDropdown.className = 'obsidian-reader-clip-dropdown';
 
 		const clipActions: Array<{ action: string; icon: SVGElement }> = [
+			{ action: 'addToOutline', icon: this.createSVG({ width: '16', height: '16', viewBox: '0 0 24 24', strokeWidth: '1.75', paths: ['M12 7v14', 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'] }) },
 			{ action: 'copyToClipboard', icon: this.createSVG({ width: '16', height: '16', viewBox: '0 0 24 24', strokeWidth: '1.75', paths: ['M20 8H10a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2z', 'M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2'] }) },
 			{ action: 'saveFile', icon: this.createSVG({ width: '16', height: '16', viewBox: '0 0 24 24', strokeWidth: '1.75', paths: ['M12 17V3', 'm6 11 6 6 6-6', 'M19 21H5'] }) },
 		];
@@ -277,8 +284,22 @@ export class Reader {
 			itemLabel.textContent = getMessage(action);
 			item.appendChild(itemLabel);
 
+			if (action === 'addToOutline') {
+				// Only offered once Outline has a default collection
+				item.style.display = 'none';
+				loadSettings().then(settings => {
+					if (settings.outline?.collectionId) item.style.display = '';
+				}).catch(() => {});
+			}
+
 			item.addEventListener('click', async () => {
-				if (action === 'copyToClipboard') {
+				if (action === 'addToOutline') {
+					const originalText = getMessage(action);
+					itemLabel.textContent = getMessage('savingToOutline');
+					const result = await Reader.saveToOutline(doc);
+					itemLabel.textContent = result;
+					setTimeout(() => { itemLabel.textContent = originalText; }, 2500);
+				} else if (action === 'copyToClipboard') {
 					const originalText = itemLabel.textContent;
 					if (Reader.isReaderPage) {
 						Reader.copyMarkdownOnReaderPage(doc);
@@ -2791,6 +2812,65 @@ export class Reader {
 			});
 		} catch (err) {
 			console.error('Failed to copy markdown:', err);
+		}
+	}
+
+	/**
+	 * Saves the article to Outline without a template: properties mirror the
+	 * default template. Returns a status message for the menu item.
+	 */
+	static async saveToOutline(doc: Document): Promise<string> {
+		try {
+			const settings = await loadSettings();
+			if (!settings.outline?.collectionId) return getMessage('outlineErrorConfig');
+
+			const defuddled = parseForClip(doc);
+			const url = doc.URL;
+			const markdown = createMarkdownContent(defuddled.content, url);
+			const today = new Date();
+			const created = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+			const properties = [
+				{ name: 'title', value: defuddled.title || doc.title || '' },
+				{ name: 'source', value: url },
+				{ name: 'author', value: defuddled.author || '' },
+				{ name: 'published', value: defuddled.published || '' },
+				{ name: 'created', value: created },
+				{ name: 'description', value: defuddled.description || '' },
+				{ name: 'tags', value: 'clippings' },
+			];
+			const frontmatter = generateFrontmatter(properties, { tags: 'multitext', created: 'date' });
+			const text = buildOutlineDocumentText(frontmatter, markdown, getOutlineTextOptions(settings.outline));
+
+			const records = typeof hl().getHighlightRecords === 'function' ? hl().getHighlightRecords() : [];
+			const comments = settings.outline.syncComments && settings.highlighterEnabled
+				? buildOutlineComments(records, html => new DOMParser().parseFromString(html, 'text/html').body.textContent || '')
+				: [];
+
+			const title = normalizeOutlineTitle(defuddled.title || doc.title || '');
+			const response = await browser.runtime.sendMessage({
+				action: OUTLINE_ACTIONS.saveDocument,
+				title,
+				text,
+				behavior: 'create',
+				sourceUrl: url,
+				comments,
+				createdAt: getPublishedDate(settings.outline, properties),
+			}) as OutlineSaveDocumentResponse | undefined;
+
+			if (!response || !response.success) {
+				console.error('Outline save failed:', response);
+				return getMessage(getOutlineErrorMessageKey(response?.errorKind));
+			}
+			await incrementStat('addToOutline', settings.outline.collectionName, '', url, title);
+			const failedImages = response.images?.failed ?? 0;
+			const failedComments = response.comments?.failed ?? 0;
+			if (failedImages > 0 || failedComments > 0) {
+				return getMessage('savedToOutlineWithWarnings', [String(failedImages), String(failedComments)]);
+			}
+			return getMessage(response.mode === 'created' ? 'savedToOutline' : 'updatedInOutline');
+		} catch (err) {
+			console.error('Failed to save to Outline:', err);
+			return getMessage('outlineErrorGeneric');
 		}
 	}
 

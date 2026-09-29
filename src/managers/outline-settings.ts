@@ -109,6 +109,25 @@ export async function initializeOutlineSettings(): Promise<void> {
 	initializeSettingToggle('outline-sync-comments-toggle', generalSettings.outline.syncComments, (checked) => {
 		saveOutlineSettings({ syncComments: checked });
 	});
+	initializeSettingToggle('outline-paragraph-spacing-toggle', generalSettings.outline.paragraphSpacing, (checked) => {
+		saveOutlineSettings({ paragraphSpacing: checked });
+	});
+	initializeSettingToggle('outline-bilingual-toggle', generalSettings.outline.bilingualLayout, (checked) => {
+		saveOutlineSettings({ bilingualLayout: checked });
+	});
+	initializeSettingToggle('outline-published-date-toggle', generalSettings.outline.usePublishedDate, (checked) => {
+		saveOutlineSettings({ usePublishedDate: checked });
+	});
+	initializeSettingToggle('outline-path-parent-toggle', generalSettings.outline.pathAsParent, (checked) => {
+		saveOutlineSettings({ pathAsParent: checked });
+	});
+	const frontmatterStyle = document.getElementById('outline-frontmatter-style') as HTMLSelectElement | null;
+	if (frontmatterStyle) {
+		frontmatterStyle.value = generalSettings.outline.frontmatterStyle;
+		frontmatterStyle.addEventListener('change', () => {
+			saveOutlineSettings({ frontmatterStyle: frontmatterStyle.value as OutlineSettings['frontmatterStyle'] });
+		});
+	}
 
 	connectButton.addEventListener('click', async () => {
 		// Persist the current field values first; the background reads them from storage
@@ -127,6 +146,8 @@ export async function initializeOutlineSettings(): Promise<void> {
 
 			setStatus(getMessage('outlineConnectedAs', [response.userName, response.teamName]));
 			templateCollectionsCache = Promise.resolve(response.collections);
+			// Lets the popup's collection picker show collections without a round trip
+			browser.storage.local.set({ outline_collections_cache: response.collections });
 			renderCollectionOptions(collectionSelect, response.collections);
 
 			// Keep the cached name in sync, or auto-select when there's only one collection

@@ -40,6 +40,10 @@ export interface OutlineSaveInput {
 	 * the transformed text, so a failing transform never loses the clip.
 	 */
 	transformText?: (text: string, documentId: string) => Promise<string>;
+	/** Backdates new documents (ISO date); ignored for updates */
+	createdAt?: string;
+	/** Resolves (creating if needed) the parent for new documents; only called when creating */
+	resolveParentDocumentId?: () => Promise<string | undefined>;
 }
 
 export interface OutlineSaveResult {
@@ -78,11 +82,14 @@ export async function saveOutlineDocument(
 	options?: OutlineRequestOptions,
 ): Promise<OutlineSaveResult> {
 	const create = async (): Promise<OutlineSaveResult> => {
+		const parentDocumentId = input.resolveParentDocumentId ? await input.resolveParentDocumentId() : undefined;
 		let document = await createOutlineDocument(config, {
 			title: input.title,
 			text: input.text,
 			collectionId: input.collectionId,
 			publish: input.publish,
+			parentDocumentId,
+			createdAt: input.createdAt,
 		}, options);
 		if (input.transformText) {
 			// documents.create already re-hosts the images it could fetch; start from

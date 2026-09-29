@@ -4,6 +4,9 @@
 
 import browser from './browser-polyfill';
 import {
+	ensureOutlineDocumentPath,
+	findOutlineDocumentBySource,
+	splitOutlinePath,
 	OutlineApiError,
 	OutlineCollection,
 	OutlineConfig,
@@ -25,6 +28,7 @@ const VALID_BEHAVIORS: Template['behavior'][] = ['create', 'append-specific', 'a
 export const OUTLINE_ACTIONS = {
 	testConnection: 'outlineTestConnection',
 	saveDocument: 'outlineSaveDocument',
+	listCollections: 'outlineListCollections',
 } as const;
 
 export interface OutlineFailure {
@@ -65,6 +69,18 @@ export interface OutlineSaveDocumentRequest {
 	collectionId?: string;
 	/** Highlight notes to post as anchored comments */
 	comments?: OutlineCommentInput[];
+	/** Template note location (a/b/c), nested as parent documents when enabled */
+	path?: string;
+	/** Creation date for new documents (ISO), when "use published date" is enabled */
+	createdAt?: string;
+}
+
+function sanitizeCreatedAt(value: unknown): string | undefined {
+	if (typeof value !== 'string' || !value) return undefined;
+	const time = Date.parse(value);
+	// Only backdate: future or invalid dates are ignored
+	if (Number.isNaN(time) || time > Date.now()) return undefined;
+	return new Date(time).toISOString();
 }
 
 function sanitizeCommentInputs(value: unknown): OutlineCommentInput[] {
@@ -114,6 +130,23 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 		const sourceUrl = typeof request.sourceUrl === 'string' ? request.sourceUrl : '';
 		const tracked = tracksSourceUrl(behavior) && Boolean(sourceUrl);
 		const mapping = tracked ? await getOutlineDocumentMapping(sourceUrl, settings.baseUrl) : null;
+		const collectionId = request.collectionId || settings.collectionId;
+
+		// No local record (e.g. clipped on another device): look for a document
+		// in the collection that already contains this page's URL
+		let mappedDocumentId = mapping?.documentId;
+		if (tracked && !mappedDocumentId && !request.forceCreate && collectionId) {
+			try {
+				mappedDocumentId = (await findOutlineDocumentBySource(config, sourceUrl, collectionId))?.id;
+			} catch (error) {
+				console.warn('Outline source lookup failed:', error);
+			}
+		}
+
+		const segments = settings.pathAsParent && typeof request.path === 'string' ? splitOutlinePath(request.path) : [];
+		const resolveParentDocumentId = segments.length > 0
+			? () => ensureOutlineDocumentPath(config, collectionId, segments)
+			: undefined;
 
 		let images: OutlineImageStats | undefined;
 		const transformText = settings.uploadImages
@@ -136,9 +169,11 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 			title: request.title,
 			text: request.text,
 			behavior,
-			collectionId: request.collectionId || settings.collectionId,
+			collectionId,
 			publish: settings.publish,
-			mappedDocumentId: mapping?.documentId,
+			mappedDocumentId,
+			createdAt: sanitizeCreatedAt(request.createdAt),
+			resolveParentDocumentId,
 			forceCreate: Boolean(request.forceCreate),
 			transformText,
 		});
@@ -198,6 +233,11 @@ export function handleOutlineMessage(request: { action?: string } & Record<strin
 	switch (request.action) {
 		case OUTLINE_ACTIONS.testConnection:
 			return handleOutlineTestConnection();
+		case OUTLINE_ACTIONS.listCollections:
+			return loadOutlineState()
+				.then(({ config }) => listOutlineCollections(config))
+				.then(collections => ({ success: true, collections }))
+				.catch(toFailure);
 		case OUTLINE_ACTIONS.saveDocument:
 			if (typeof request.title !== 'string' || typeof request.text !== 'string') {
 				return Promise.resolve({ success: false, errorKind: 'validation', error: 'Missing title or text' } satisfies OutlineFailure);

@@ -213,6 +213,10 @@ export interface CreateOutlineDocumentParams {
 	text: string;
 	collectionId: string;
 	publish: boolean;
+	/** Nest under this document */
+	parentDocumentId?: string;
+	/** ISO date to backdate the document's creation date */
+	createdAt?: string;
 }
 
 export async function createOutlineDocument(
@@ -231,6 +235,8 @@ export async function createOutlineDocument(
 			text: params.text,
 			collectionId: params.collectionId,
 			publish: params.publish,
+			...(params.parentDocumentId ? { parentDocumentId: params.parentDocumentId } : {}),
+			...(params.createdAt ? { createdAt: params.createdAt } : {}),
 		},
 		options,
 	);
@@ -413,4 +419,104 @@ export async function deleteOutlineComment(
 		}
 		throw error;
 	}
+}
+
+export interface OutlineNavigationNode {
+	id: string;
+	title: string;
+	children: OutlineNavigationNode[];
+}
+
+function toNavigationNodes(value: unknown): OutlineNavigationNode[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.filter((node): node is Record<string, unknown> => Boolean(node) && typeof (node as any).id === 'string')
+		.map(node => ({
+			id: node.id as string,
+			title: String(node.title ?? ''),
+			children: toNavigationNodes(node.children),
+		}));
+}
+
+/** Published document tree of a collection. */
+export async function getOutlineCollectionTree(
+	config: OutlineConfig,
+	collectionId: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineNavigationNode[]> {
+	const result = await outlineRequest<{ data?: unknown }>(config, 'collections.documents', { id: collectionId }, options);
+	return toNavigationNodes(result.data);
+}
+
+/** Splits a note location like "Clippings/Tech/" into path segments. */
+export function splitOutlinePath(path: string): string[] {
+	return path.split('/').map(segment => segment.trim()).filter(Boolean);
+}
+
+/**
+ * Returns the id of the document at `segments` inside the collection, creating
+ * missing levels. Folder documents are always published: drafts don't appear
+ * in the collection tree, so they couldn't be found again.
+ */
+export async function ensureOutlineDocumentPath(
+	config: OutlineConfig,
+	collectionId: string,
+	segments: string[],
+	options?: OutlineRequestOptions,
+): Promise<string | undefined> {
+	if (segments.length === 0) return undefined;
+	let level = await getOutlineCollectionTree(config, collectionId, options);
+	let parentId: string | undefined;
+	for (const segment of segments) {
+		const wanted = segment.toLowerCase();
+		const existing = level.find(node => node.title.trim().toLowerCase() === wanted);
+		if (existing) {
+			parentId = existing.id;
+			level = existing.children;
+			continue;
+		}
+		const created = await createOutlineDocument(config, {
+			title: segment,
+			text: '',
+			collectionId,
+			publish: true,
+			parentDocumentId: parentId,
+		}, options);
+		parentId = created.id;
+		level = [];
+	}
+	return parentId;
+}
+
+/**
+ * Finds a document in the collection that was clipped from `sourceUrl` (its
+ * text contains the URL), e.g. on another device without the local mapping.
+ */
+export async function findOutlineDocumentBySource(
+	config: OutlineConfig,
+	sourceUrl: string,
+	collectionId: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineDocument | null> {
+	if (!sourceUrl) return null;
+	const result = await outlineRequest<{ data?: Array<{ document?: RawOutlineDocument & { text?: string } }> }>(
+		config,
+		'documents.search',
+		{ query: `"${sourceUrl}"`, collectionId, limit: 10 },
+		options,
+	);
+	const documents = (Array.isArray(result.data) ? result.data : [])
+		.map(item => item?.document)
+		.filter((doc): doc is RawOutlineDocument & { text?: string } => isLiveDocument(doc))
+		.filter(doc => !doc.collectionId || doc.collectionId === collectionId);
+
+	for (const doc of documents.slice(0, 5)) {
+		let text = doc.text;
+		if (typeof text !== 'string') {
+			const info = await outlineRequest<{ data?: { text?: string } }>(config, 'documents.info', { id: doc.id }, options);
+			text = info.data?.text ?? '';
+		}
+		if (text.includes(sourceUrl)) return toOutlineDocument(doc);
+	}
+	return null;
 }

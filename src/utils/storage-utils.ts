@@ -15,7 +15,14 @@ export const DEFAULT_OUTLINE_SETTINGS: OutlineSettings = {
 	publish: true,
 	uploadImages: true,
 	syncComments: true,
+	paragraphSpacing: true,
+	frontmatterStyle: 'table',
+	bilingualLayout: true,
+	usePublishedDate: false,
+	pathAsParent: false,
 };
+
+const FRONTMATTER_STYLES: OutlineSettings['frontmatterStyle'][] = ['table', 'callout', 'code'];
 
 export async function getOutlineApiKey(): Promise<string> {
 	const result = await browser.storage.local.get(OUTLINE_API_KEY_STORAGE_KEY);
@@ -36,6 +43,13 @@ export function sanitizeOutlineSettings(raw: unknown): OutlineSettings {
 		publish: typeof data.publish === 'boolean' ? data.publish : DEFAULT_OUTLINE_SETTINGS.publish,
 		uploadImages: typeof data.uploadImages === 'boolean' ? data.uploadImages : DEFAULT_OUTLINE_SETTINGS.uploadImages,
 		syncComments: typeof data.syncComments === 'boolean' ? data.syncComments : DEFAULT_OUTLINE_SETTINGS.syncComments,
+		paragraphSpacing: typeof data.paragraphSpacing === 'boolean' ? data.paragraphSpacing : DEFAULT_OUTLINE_SETTINGS.paragraphSpacing,
+		frontmatterStyle: FRONTMATTER_STYLES.includes(data.frontmatterStyle as OutlineSettings['frontmatterStyle'])
+			? data.frontmatterStyle as OutlineSettings['frontmatterStyle']
+			: DEFAULT_OUTLINE_SETTINGS.frontmatterStyle,
+		bilingualLayout: typeof data.bilingualLayout === 'boolean' ? data.bilingualLayout : DEFAULT_OUTLINE_SETTINGS.bilingualLayout,
+		usePublishedDate: typeof data.usePublishedDate === 'boolean' ? data.usePublishedDate : DEFAULT_OUTLINE_SETTINGS.usePublishedDate,
+		pathAsParent: typeof data.pathAsParent === 'boolean' ? data.pathAsParent : DEFAULT_OUTLINE_SETTINGS.pathAsParent,
 	};
 }
 

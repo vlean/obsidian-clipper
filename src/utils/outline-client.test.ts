@@ -177,3 +177,22 @@ describe('getOutlineErrorMessageKey', () => {
 		expect(getOutlineErrorMessageKey(undefined)).toBe('outlineErrorGeneric');
 	});
 });
+
+describe('ensureOutlineDocumentPath', () => {
+	test('reuses existing levels case-insensitively without creating documents', async () => {
+		const { ensureOutlineDocumentPath, splitOutlinePath } = await import('./outline-client');
+		expect(splitOutlinePath('/a// b /')).toEqual(['a', 'b']);
+		const fetchImpl = vi.fn(async () => jsonResponse({ data: [
+			{ id: 'c', title: 'Clippings', children: [{ id: 't', title: 'Tech', children: [] }] },
+		] }));
+		await expect(ensureOutlineDocumentPath(config, 'col', ['clippings', 'TECH'], { fetchImpl })).resolves.toBe('t');
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
+	test('returns undefined for an empty path', async () => {
+		const { ensureOutlineDocumentPath } = await import('./outline-client');
+		const fetchImpl = vi.fn();
+		await expect(ensureOutlineDocumentPath(config, 'col', [], { fetchImpl })).resolves.toBeUndefined();
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+});
