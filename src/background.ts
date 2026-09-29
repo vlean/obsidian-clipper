@@ -11,6 +11,7 @@ import { handleOutlineMessage, OUTLINE_ACTIONS, isOutlineConfigured } from './ut
 import { handleOutlineExcerptToDaily, OutlineExcerptRequest, OutlineExcerptResponse } from './utils/outline-excerpt';
 import { getOutlineErrorMessageKey } from './utils/outline-client';
 import { updateClippedBadgeForTab } from './utils/outline-badge';
+import { ensureInjected, makeEnsureLoader, type EnsureInjectedDeps, type LoadEntry } from './utils/ensure-injected';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
@@ -170,7 +171,11 @@ async function refreshOutlineConfigured(): Promise<boolean> {
 }
 
 let popupPorts: { [tabId: number]: browser.Runtime.Port } = {};
-const contentScriptLoads = new Map<number, { url: string; promise: Promise<void> }>();
+const contentScriptLoads = new Map<number, LoadEntry>();
+// The on-demand extraction bundle (content-extract.js) is injected separately
+// and lazily, the first time a tab needs an extraction action. Tracked per tab
+// like the core script so concurrent callers share one in-flight injection.
+const contentExtractLoads = new Map<number, LoadEntry>();
 // Highlighter mode changes wait on lazy injection, so run them one at a time
 // per tab. Otherwise two quick toggles both read the same starting state.
 const highlighterModeQueues = new Map<number, Promise<unknown>>();
@@ -193,80 +198,97 @@ function queueHighlighterModeChange<T>(tabId: number, change: () => Promise<T>):
 browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 	if (changeInfo.status === 'loading') {
 		contentScriptLoads.delete(tabId);
+		contentExtractLoads.delete(tabId);
 	}
 });
 
-async function injectContentScript(tabId: number): Promise<void> {
-	if (browser.scripting) {
-		debugLog('Clipper', 'Using scripting API');
-		await browser.scripting.executeScript({
-			target: { tabId },
-			files: ['content.js']
-		});
-	} else {
-		debugLog('Clipper', 'Using tabs.executeScript fallback');
-		await browser.tabs.executeScript(tabId, { file: 'content.js' });
-	}
-	debugLog('Clipper', 'Injection completed, waiting for init...');
-
-	// Poll until the content script responds, rather than a fixed delay.
-	// Try immediately after injection, then back off with 50ms sleeps.
-	let ready = false;
-	for (let i = 0; i < 8; i++) {
-		try {
-			await browser.tabs.sendMessage(tabId, { action: "ping" });
-			ready = true;
-			break;
-		} catch {
-			// Not ready yet
+// Adapter over the browser APIs for the shared ensure-injected algorithm.
+// browser.tabs.sendMessage rejects when no listener answers, which is exactly
+// the signal ensureInjected uses to decide whether to inject.
+const injectDeps: EnsureInjectedDeps = {
+	sendMessage: (tabId, message) => browser.tabs.sendMessage(tabId, message),
+	injectFile: async (tabId, file) => {
+		if (browser.scripting) {
+			await browser.scripting.executeScript({ target: { tabId }, files: [file] });
+		} else {
+			await browser.tabs.executeScript(tabId, { file });
 		}
-		await new Promise(resolve => setTimeout(resolve, 50));
-	}
-	if (!ready) {
-		throw new Error('Content script did not respond after injection');
-	}
-	debugLog('Clipper', 'Post-injection ping succeeded');
-}
+	},
+	sleep: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+};
 
-async function ensureContentScriptLoadedInBackground(tabId: number): Promise<void> {
-	// Resolve the current page before reusing an in-flight load. A tab can
-	// navigate while injection is pending, and the new document must not reuse
-	// work that was started for the previous URL.
+async function tabUrlOrThrow(tabId: number, context: string): Promise<string> {
 	const tab = await browser.tabs.get(tabId);
 	if (!tab.url || !isValidUrl(tab.url)) {
-		throw new Error('Invalid URL for content script injection');
+		throw new Error(`Invalid URL for ${context}`);
 	}
-
-	const existingLoad = contentScriptLoads.get(tabId);
-	if (existingLoad?.url === tab.url) {
-		return existingLoad.promise;
-	}
-
-	const load = (async () => {
-		try {
-			// Attempt to send a message to the content script
-			await browser.tabs.sendMessage(tabId, { action: "ping" });
-			debugLog('Clipper', 'Content script ping succeeded');
-		} catch (error) {
-			// If the message fails, the content script is not loaded, so inject it
-			debugLog('Clipper', 'Ping failed, injecting content script...', error);
-			await injectContentScript(tabId);
-		}
-	})();
-
-	const entry = { url: tab.url, promise: load };
-	contentScriptLoads.set(tabId, entry);
-	try {
-		await load;
-	} finally {
-		if (contentScriptLoads.get(tabId) === entry) {
-			contentScriptLoads.delete(tabId);
-		}
-	}
+	return tab.url;
 }
+
+async function injectContentScript(tabId: number): Promise<void> {
+	debugLog('Clipper', 'Injecting content script...');
+	await ensureInjected(injectDeps, {
+		tabId,
+		file: 'content.js',
+		pingAction: 'ping',
+		label: 'Content script',
+	});
+}
+
+// Ensure the core content script is present. Resolves the current page before
+// reusing an in-flight load: a tab can navigate while injection is pending, and
+// the new document must not reuse work started for the previous URL. Idempotent
+// per tab+URL via contentScriptLoads.
+const ensureContentScriptLoadedInBackground = makeEnsureLoader(
+	contentScriptLoads,
+	(tabId) => tabUrlOrThrow(tabId, 'content script injection'),
+	(tabId) => ensureInjected(injectDeps, {
+		tabId,
+		file: 'content.js',
+		pingAction: 'ping',
+		label: 'Content script',
+	}),
+);
 
 async function sendMessageToContentScript(tabId: number, message: any): Promise<any> {
 	await ensureContentScriptLoadedInBackground(tabId);
+	return browser.tabs.sendMessage(tabId, message);
+}
+
+// Inject the on-demand extraction bundle and wait for its listener to be ready.
+// Uses a distinct "pingExtract" action so we detect that content-extract.js
+// specifically has loaded (the core "ping" is answered by content.js).
+async function injectExtractionScript(tabId: number): Promise<void> {
+	debugLog('Clipper', 'Injecting extraction bundle...');
+	await ensureInjected(injectDeps, {
+		tabId,
+		file: 'content-extract.js',
+		pingAction: 'pingExtract',
+		label: 'Extraction bundle',
+	});
+}
+
+// Ensure BOTH the core content script and the extraction bundle are present
+// before an extraction action runs. Ordering matters: content.js must load
+// first because it owns window.__obsidianHighlighter, which content-extract.js
+// reads for highlight state (enforced by the `prerequisite` step below).
+// Idempotent per tab+URL via contentExtractLoads.
+const ensureExtractionLoaded = makeEnsureLoader(
+	contentExtractLoads,
+	(tabId) => tabUrlOrThrow(tabId, 'extraction script injection'),
+	(tabId) => ensureInjected(injectDeps, {
+		tabId,
+		file: 'content-extract.js',
+		pingAction: 'pingExtract',
+		label: 'Extraction bundle',
+		// Core first (owns the highlighter bridge the extract bundle reads).
+		prerequisite: () => ensureContentScriptLoadedInBackground(tabId),
+	}),
+);
+
+// Ensure the extraction bundle is present, then send it a message.
+async function sendMessageToExtractionScript(tabId: number, message: any): Promise<any> {
+	await ensureExtractionLoaded(tabId);
 	return browser.tabs.sendMessage(tabId, message);
 }
 
@@ -288,13 +310,30 @@ async function loadContentScriptForHighlights(tabId: number, rawUrl: string): Pr
 	return true;
 }
 
+// Actions that require the on-demand extraction bundle (defuddle) to be present
+// in the page. These are handled by content-extract.js, not the core content
+// script, so the background must inject that bundle first.
+const EXTRACTION_ACTIONS = new Set([
+	'getPageContent',
+	'copyMarkdownToClipboard',
+	'saveMarkdownToFile',
+	'getSelectionMarkdown',
+]);
+
 // Route a message to a tab, handling both normal pages (via content script)
 // and extension pages like the reader page (via runtime.sendMessage forwarding).
 async function routeMessageToTab(tabId: number, message: any): Promise<any> {
 	const tab = await browser.tabs.get(tabId);
 	if (isNormalPageUrl(tab.url)) {
+		// Extraction actions need the defuddle bundle injected first; other
+		// actions only need the core content script.
+		if (message && EXTRACTION_ACTIONS.has(message.action)) {
+			return sendMessageToExtractionScript(tabId, message);
+		}
 		return sendMessageToContentScript(tabId, message);
 	} else {
+		// Extension pages (e.g. reader.html) answer these actions themselves
+		// via their own bundle; forward without injecting content scripts.
 		return browser.runtime.sendMessage({
 			action: 'extensionPageMessage',
 			targetTabId: tabId,
@@ -355,6 +394,7 @@ async function initialize() {
 			highlighterModeQueues.delete(tabId);
 			delete readerModeState[tabId];
 			contentScriptLoads.delete(tabId);
+			contentExtractLoads.delete(tabId);
 		});
 
 		// Keep the "already clipped" toolbar badge in sync with the active tab.
@@ -849,8 +889,15 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 		if (typedRequest.action === "forceInjectContentScript") {
 			const tabId = typedRequest.tabId;
 			if (tabId) {
+				// Re-inject the core script AND the extraction bundle so a fresh
+				// generation of each supersedes any zombie context left behind by
+				// an extension update (the retry path for extraction failures).
 				injectContentScript(tabId)
-					.then(() => sendResponse({ success: true }))
+					.then(() => injectExtractionScript(tabId))
+					.then(() => {
+						contentExtractLoads.delete(tabId);
+						sendResponse({ success: true });
+					})
 					.catch((error) => {
 						console.error('[Obsidian Clipper] forceInjectContentScript failed:', error);
 						sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
@@ -1087,7 +1134,7 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 		sidePanelOpenWindows.add(tab.windowId);
 		await ensureContentScriptLoadedInBackground(tab.id);
 	} else if (info.menuItemId === 'copy-markdown-to-clipboard' && tab && tab.id) {
-		await sendMessageToContentScript(tab.id, { action: "copyMarkdownToClipboard" });
+		await routeMessageToTab(tab.id, { action: "copyMarkdownToClipboard" });
 	} else if (info.menuItemId === 'clip-to-outline') {
 		await openPopupAndClipToOutline();
 	} else if (info.menuItemId === 'excerpt-to-outline-daily' && tab && tab.id) {
@@ -1162,8 +1209,9 @@ async function runOutlineExcerptToDaily(
 
 	if (!selectionMarkdown && !selectionText.trim()) {
 		try {
-			await ensureContentScriptLoadedInBackground(tabId);
-			const result = await browser.tabs.sendMessage(tabId, { action: 'getSelectionMarkdown' }) as {
+			// getSelectionMarkdown lives in the extraction bundle (needs defuddle),
+			// so ensure it is injected (which also loads the core script first).
+			const result = await sendMessageToExtractionScript(tabId, { action: 'getSelectionMarkdown' }) as {
 				success?: boolean; markdown?: string; text?: string; title?: string; url?: string;
 			} | undefined;
 			if (result?.success) {

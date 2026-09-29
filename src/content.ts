@@ -2,16 +2,9 @@ import browser from './utils/browser-polyfill';
 import * as highlighter from './utils/highlighter';
 import { removeExistingHighlights } from './utils/highlighter-overlays';
 import { loadSettings, generalSettings } from './utils/storage-utils';
-import { getDomain } from './utils/string-utils';
 import { extractContentBySelector as extractContentBySelectorShared } from './utils/shared';
-import Defuddle from 'defuddle';
-import { createMarkdownContent } from 'defuddle/full';
-import { flattenShadowDom } from './utils/flatten-shadow-dom';
-import { serializeChildren } from './utils/dom-utils';
-import { saveFile } from './utils/file-utils';
 import { debugLog } from './utils/debug';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './utils/iframe-resize';
-import { parseForClip } from './utils/clip-utils';
 import { showPageToast } from './utils/page-toast';
 import {
 	maybeShowSelectionToolbar,
@@ -98,28 +91,6 @@ declare global {
 	// Firefox
 	browser.runtime.sendMessage({ action: "contentScriptLoaded" });
 
-	interface ContentResponse {
-		content: string;
-		selectedHtml: string;
-		extractedContent: { [key: string]: string };
-		schemaOrgData: any;
-		fullHtml: string;
-		highlights: string[];
-		highlightRecords: highlighter.AnyHighlightData[];
-		title: string;
-		description: string;
-		domain: string;
-		favicon: string;
-		image: string;
-		parseTime: number;
-		published: string;
-		author: string;
-		site: string;
-		wordCount: number;
-		language: string;
-		metaTags: { name?: string | null; property?: string | null; content: string | null }[];
-	}
-
 	let initializationPromise: Promise<void> = Promise.resolve();
 
 	browser.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
@@ -127,6 +98,20 @@ declare global {
 		// yield to it rather than responding from a potentially stale context.
 		if (window.obsidianClipperGeneration !== myGeneration) {
 			return;
+		}
+
+		// These actions are owned by the on-demand extraction bundle
+		// (content-extract.js), which the background injects before sending
+		// them. Yield (return undefined, don't hold the channel) so the extract
+		// listener answers them instead of this core script.
+		if (
+			request.action === "getPageContent" ||
+			request.action === "copyMarkdownToClipboard" ||
+			request.action === "saveMarkdownToFile" ||
+			request.action === "getSelectionMarkdown" ||
+			request.action === "pingExtract"
+		) {
+			return undefined;
 		}
 
 		if (request.action === "ping") {
@@ -164,59 +149,6 @@ declare global {
 			return true;
 		}
 
-		if (request.action === "copyMarkdownToClipboard") {
-			flattenShadowDom(document).then(() => {
-				try {
-					const defuddled = parseForClip(document);
-
-					// Convert HTML content to markdown
-					const markdown = createMarkdownContent(defuddled.content, document.URL);
-
-					// Copy to clipboard
-					const textArea = document.createElement("textarea");
-					textArea.value = markdown;
-					document.body.appendChild(textArea);
-					textArea.select();
-					document.execCommand('copy');
-					document.body.removeChild(textArea);
-
-					sendResponse({ success: true });
-				} catch (err) {
-					console.error('Failed to copy markdown to clipboard:', err);
-					sendResponse({ success: false, error: (err as Error).message });
-				}
-			});
-			return true;
-		}
-
-		if (request.action === "getSelectionMarkdown") {
-			flattenShadowDom(document).then(() => {
-				try {
-					const selection = window.getSelection();
-					let markdown = '';
-					if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
-						const div = document.createElement('div');
-						for (let i = 0; i < selection.rangeCount; i++) {
-							div.appendChild(selection.getRangeAt(i).cloneContents());
-						}
-						const html = serializeChildren(div);
-						markdown = html ? createMarkdownContent(html, document.URL) : '';
-					}
-					sendResponse({
-						success: true,
-						markdown: markdown.trim(),
-						text: (selection?.toString() ?? '').trim(),
-						title: document.title,
-						url: location.href,
-					});
-				} catch (err) {
-					console.error('Failed to get selection markdown:', err);
-					sendResponse({ success: false, error: (err as Error).message });
-				}
-			});
-			return true;
-		}
-
 		if (request.action === "showPageToast") {
 			try {
 				showPageToast(String(request.message ?? ''), {
@@ -239,128 +171,7 @@ declare global {
 			return true;
 		}
 
-		if (request.action === "saveMarkdownToFile") {
-			flattenShadowDom(document).then(async () => {
-				try {
-					const defuddled = parseForClip(document);
-					const markdown = createMarkdownContent(defuddled.content, document.URL);
-					const title = defuddled.title || document.title || 'Untitled';
-					const fileName = title.replace(/[/\\?%*:|"<>]/g, '-');
-					await saveFile({
-						content: markdown,
-						fileName,
-						mimeType: 'text/markdown',
-					});
-					sendResponse({ success: true });
-				} catch (err) {
-					console.error('Failed to save markdown file:', err);
-					sendResponse({ success: false, error: (err as Error).message });
-				}
-			});
-			return true;
-		}
-
-		if (request.action === "getPageContent") {
-			// Flatten shadow DOM before extraction (async, needs main world)
-			const flattenTimeout = new Promise<void>(resolve => setTimeout(resolve, 3000));
-			Promise.race([flattenShadowDom(document), flattenTimeout]).then(async () => {
-				let selectedHtml = '';
-				const selection = window.getSelection();
-
-				if (selection && selection.rangeCount > 0) {
-					const range = selection.getRangeAt(0);
-					const clonedSelection = range.cloneContents();
-					const div = document.createElement('div');
-					div.appendChild(clonedSelection);
-					selectedHtml = serializeChildren(div);
-				}
-
-				// Use parseAsync to ensure async variables like {{transcript}} are available.
-				// If it hangs (e.g. another extension has corrupted fetch), fall back to sync parse.
-				const defuddle = new Defuddle(document, { url: document.URL });
-				const parseTimeout = new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error('parseAsync timeout')), 8000)
-				);
-				const defuddled = await Promise.race([defuddle.parseAsync(), parseTimeout])
-					.catch(() => defuddle.parse());
-				const extractedContent: { [key: string]: string } = {
-					...defuddled.variables,
-				};
-
-				// Create a new DOMParser
-				const parser = new DOMParser();
-				// Parse the document's HTML
-				const doc = parser.parseFromString(document.documentElement.outerHTML, 'text/html');
-
-				// Remove all script and style elements
-				doc.querySelectorAll('script, style').forEach(el => el.remove());
-
-				// Remove style attributes from all elements
-				doc.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
-
-				// Convert all relative URLs to absolute
-				doc.querySelectorAll('[src], [href]').forEach(element => {
-					['src', 'href', 'srcset'].forEach(attr => {
-						const value = element.getAttribute(attr);
-						if (!value) return;
-
-						if (attr === 'srcset') {
-							const newSrcset = value.split(',').map(src => {
-								const [url, size] = src.trim().split(' ');
-								try {
-									const absoluteUrl = new URL(url, document.baseURI).href;
-									return `${absoluteUrl}${size ? ' ' + size : ''}`;
-								} catch (e) {
-									return src;
-								}
-							}).join(', ');
-							element.setAttribute(attr, newSrcset);
-						} else if (!value.startsWith('http') && !value.startsWith('data:') && !value.startsWith('#') && !value.startsWith('//')) {
-							try {
-								const absoluteUrl = new URL(value, document.baseURI).href;
-								element.setAttribute(attr, absoluteUrl);
-							} catch (e) {
-								console.warn(`Failed to process ${attr} URL:`, value);
-							}
-						}
-					});
-				});
-
-				// Get the modified HTML without scripts, styles, and style attributes
-				const cleanedHtml = doc.documentElement.outerHTML;
-
-				const response: ContentResponse = {
-					author: defuddled.author,
-					content: defuddled.content,
-					description: defuddled.description,
-					domain: getDomain(document.URL),
-					extractedContent: extractedContent,
-					favicon: defuddled.favicon,
-					fullHtml: cleanedHtml,
-					highlights: highlighter.getHighlights(),
-					highlightRecords: highlighter.getHighlightRecords(),
-					image: defuddled.image,
-					language: defuddled.language || '',
-					parseTime: defuddled.parseTime,
-					published: defuddled.published,
-					schemaOrgData: defuddled.schemaOrgData,
-					selectedHtml: selectedHtml,
-					site: defuddled.site,
-					title: defuddled.title,
-					wordCount: defuddled.wordCount,
-					metaTags: defuddled.metaTags || []
-				};
-				if (defuddled.title) {
-					highlighter.setPageTitle(defuddled.title);
-				}
-				highlighter.updatePageDomainSettings({ site: defuddled.site, favicon: defuddled.favicon });
-				sendResponse(response);
-			}).catch((error: unknown) => {
-				console.error('[Obsidian Clipper] getPageContent error:', error);
-				sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
-			});
-			return true;
-		} else if (request.action === "extractContent") {
+		if (request.action === "extractContent") {
 			const content = extractContentBySelector(request.selector, request.attribute, request.extractHtml);
 			sendResponse({ content: content });
 		} else if (request.action === "paintHighlights") {

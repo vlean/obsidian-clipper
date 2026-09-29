@@ -45,6 +45,7 @@ module.exports = (env, argv) => {
 			highlights: './src/core/highlights.ts',
 			'reader-page': './src/core/reader-view.ts',
 			content: './src/content.ts',
+			'content-extract': './src/content-extract.ts',
 			background: './src/background.ts',
 			style: './src/style.scss',
 			highlighter: './src/highlighter.scss',
