@@ -65,6 +65,7 @@ export const generalSettings: Settings = {
 		pathAsParent: false,
 		showClippedBadge: true,
 		starOnClip: false,
+		showRelatedDocuments: true,
 	},
 };
 

@@ -614,6 +614,37 @@
 	"outline": {
 		"message": "Outline"
 	},
+	"outlineAddAiSummaryTemplate": {
+		"message": "Add AI summary template"
+	},
+	"outlineAddAiSummaryTemplateDescription": {
+		"message": "Create a new template that uses the Interpreter to add a summary of key points above the clipped content."
+	},
+	"outlineAddRelatedDocument": {
+		"message": "Add a link to $1",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"outlineAiSummaryCalloutTitle": {
+		"message": "Summary"
+	},
+	"outlineAiSummaryNeedsInterpreter": {
+		"message": "Template created. Enable the Interpreter and configure a model so the summary can be generated."
+	},
+	"outlineAiSummaryTemplateAdded": {
+		"message": "Created the \"$1\" template.",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"outlineAiSummaryTemplateName": {
+		"message": "AI summary"
+	},
 	"outlineAlreadyClipped": {
 		"message": "Already in Outline: $1",
 		"placeholders": {
@@ -747,6 +778,9 @@
 			}
 		}
 	},
+	"outlineOpenInterpreterSettings": {
+		"message": "Open Interpreter settings"
+	},
 	"outlineParagraphSpacing": {
 		"message": "Add space between paragraphs"
 	},
@@ -771,6 +805,17 @@
 	"outlinePublishDescription": {
 		"message": "When off, documents are saved as drafts visible only to you."
 	},
+	"outlineRelatedDocuments": {
+		"message": "Related documents ($1)",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"outlineRelatedHeading": {
+		"message": "Related"
+	},
 	"outlineSelectCollection": {
 		"message": "Select a collection"
 	},
@@ -785,6 +830,12 @@
 	},
 	"outlineShowClippedBadgeDescription": {
 		"message": "Show a checkmark on the toolbar icon when the current page has already been clipped to Outline."
+	},
+	"outlineShowRelatedDocuments": {
+		"message": "Show related documents"
+	},
+	"outlineShowRelatedDocumentsDescription": {
+		"message": "Before clipping, look up documents in your Outline workspace whose titles match the page and list them in the popup."
 	},
 	"outlineStarOnClip": {
 		"message": "Star documents when clipping"

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { handleOutlineMessage, OUTLINE_ACTIONS } from './outline-service';
+import { normalizeUrl } from './url-utils';
 
 const { syncStore, localStore } = vi.hoisted(() => ({
 	syncStore: {} as Record<string, unknown>,
@@ -400,5 +401,104 @@ describe('share document', () => {
 		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.shareDocument });
 		expect(response).toMatchObject({ success: false, errorKind: 'validation' });
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('handleOutlineMessage — findRelated', () => {
+	test('returns up to 5 live documents, excluding archived and deleted', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({
+			data: [
+				{ id: 'd1', title: 'Deep Modules', url: '/doc/deep-modules-1' },
+				{ id: 'd2', title: 'Archived', url: '/doc/archived-2', archivedAt: '2023-01-01T00:00:00Z' },
+				{ id: 'd3', title: 'Deleted', url: '/doc/deleted-3', deletedAt: '2023-01-01T00:00:00Z' },
+				{ id: 'd4', title: 'Interface Design', url: '/doc/interface-4' },
+				{ id: 'd5', title: 'Another', url: '/doc/another-5' },
+				{ id: 'd6', title: 'And More', url: '/doc/more-6' },
+				{ id: 'd7', title: 'Even More', url: '/doc/even-more-7' },
+			],
+		}));
+
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.findRelated,
+			title: 'Deep Modules in Practice | Hacker News',
+		}) as { success: true; documents: { id: string; title: string; url: string }[] };
+
+		expect(response.success).toBe(true);
+		expect(response.documents.map(d => d.id)).toEqual(['d1', 'd4', 'd5', 'd6', 'd7']);
+		// URLs are absolute
+		expect(response.documents[0].url).toBe('https://wiki.example.com/doc/deep-modules-1');
+		// Searched titles, scoped to the default collection, with a cleaned query
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('https://wiki.example.com/api/documents.search_titles');
+		const body = JSON.parse(init.body as string);
+		expect(body.query).toBe('Deep Modules Practice');
+		expect(body.collectionId).toBe('default-col');
+	});
+
+	test('excludes the document already mapped to the source URL', async () => {
+		const sourceUrl = 'https://example.com/post';
+		localStore.outline_documents = {
+			[normalizeUrl(sourceUrl)]: {
+				documentId: 'd1',
+				baseUrl: 'https://wiki.example.com',
+				url: 'https://wiki.example.com/doc/deep-modules-1',
+				title: 'Deep Modules',
+				updatedAt: '2024-01-01T00:00:00Z',
+			},
+		};
+		fetchMock.mockResolvedValueOnce(jsonResponse({
+			data: [
+				{ id: 'd1', title: 'Deep Modules', url: '/doc/deep-modules-1' },
+				{ id: 'd4', title: 'Interface Design', url: '/doc/interface-4' },
+			],
+		}));
+
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.findRelated,
+			title: 'Deep Modules',
+			sourceUrl,
+		}) as { success: true; documents: { id: string }[] };
+
+		expect(response.success).toBe(true);
+		expect(response.documents.map(d => d.id)).toEqual(['d4']);
+	});
+
+	test('falls back to full-text search when title search finds nothing', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: [] })) // search_titles: empty
+			.mockResolvedValueOnce(jsonResponse({
+				data: [
+					{ ranking: 0.9, context: '...', document: { id: 'd9', title: 'Full text hit', url: '/doc/ft-9' } },
+				],
+			}));
+
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.findRelated,
+			title: 'Some Obscure Topic',
+		}) as { success: true; documents: { id: string; url: string }[] };
+
+		expect(response.success).toBe(true);
+		expect(response.documents.map(d => d.id)).toEqual(['d9']);
+		expect(response.documents[0].url).toBe('https://wiki.example.com/doc/ft-9');
+		expect((fetchMock.mock.calls[1][0] as string)).toBe('https://wiki.example.com/api/documents.search');
+	});
+
+	test('returns an empty list quickly when the title yields no query', async () => {
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.findRelated,
+			title: '   ',
+		});
+		expect(response).toEqual({ success: true, documents: [] });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	test('errors resolve to an empty list (never blocks the popup)', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'boom' }, 500));
+
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.findRelated,
+			title: 'Anything Here',
+		});
+		expect(response).toEqual({ success: true, documents: [] });
 	});
 });

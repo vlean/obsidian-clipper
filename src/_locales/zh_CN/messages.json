@@ -614,6 +614,37 @@
 	"outline": {
 		"message": "Outline"
 	},
+	"outlineAddAiSummaryTemplate": {
+		"message": "添加 AI 摘要模板"
+	},
+	"outlineAddAiSummaryTemplateDescription": {
+		"message": "创建一个新模板，使用 AI 解释器在剪藏内容上方生成要点摘要。"
+	},
+	"outlineAddRelatedDocument": {
+		"message": "添加指向「$1」的链接",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"outlineAiSummaryCalloutTitle": {
+		"message": "摘要"
+	},
+	"outlineAiSummaryNeedsInterpreter": {
+		"message": "模板已创建。请启用 AI 解释器并配置模型，以便生成摘要。"
+	},
+	"outlineAiSummaryTemplateAdded": {
+		"message": "已创建「$1」模板。",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"outlineAiSummaryTemplateName": {
+		"message": "AI 摘要"
+	},
 	"outlineAlreadyClipped": {
 		"message": "已在 Outline 中：$1",
 		"placeholders": {
@@ -747,6 +778,9 @@
 			}
 		}
 	},
+	"outlineOpenInterpreterSettings": {
+		"message": "打开解释器设置"
+	},
 	"outlineParagraphSpacing": {
 		"message": "段落之间留空"
 	},
@@ -771,6 +805,17 @@
 	"outlinePublishDescription": {
 		"message": "关闭后，文档将保存为仅自己可见的草稿。"
 	},
+	"outlineRelatedDocuments": {
+		"message": "相关文档（$1）",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"outlineRelatedHeading": {
+		"message": "相关文档"
+	},
 	"outlineSelectCollection": {
 		"message": "选择集合"
 	},
@@ -785,6 +830,12 @@
 	},
 	"outlineShowClippedBadgeDescription": {
 		"message": "当前页面已剪藏到 Outline 时，在工具栏图标上显示一个对勾标记。"
+	},
+	"outlineShowRelatedDocuments": {
+		"message": "显示相关文档"
+	},
+	"outlineShowRelatedDocumentsDescription": {
+		"message": "剪藏前，在 Outline 工作区中查找标题与当前页面匹配的文档，并在弹窗中列出。"
 	},
 	"outlineStarOnClip": {
 		"message": "剪藏时收藏文档"

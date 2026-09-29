@@ -116,6 +116,19 @@ export async function getCurrentLanguage(): Promise<string> {
 	return ''; // Return empty string for system default
 }
 
+/**
+ * The language code currently used to resolve messages (e.g. 'en', 'zh_CN').
+ * Falls back to 'en' before i18n has been initialised.
+ */
+export function getCurrentUILanguage(): string {
+	return currentLanguage || 'en';
+}
+
+/** True when the UI is displayed in a Chinese locale (zh_CN, zh_TW, ...). */
+export function isChineseUILanguage(): boolean {
+	return getCurrentUILanguage().toLowerCase().startsWith('zh');
+}
+
 export async function setLanguage(language: string): Promise<void> {
 	await setLocalStorage('language', language);
 	// Reload all extension pages to apply the new language

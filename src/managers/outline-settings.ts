@@ -6,6 +6,10 @@ import { debounce } from '../utils/debounce';
 import { OutlineCollection, getOutlineErrorMessageKey, normalizeOutlineBaseUrl } from '../utils/outline-client';
 import { OUTLINE_ACTIONS, OutlineTestConnectionResponse } from '../utils/outline-service';
 import { OutlineSettings, Template } from '../types/types';
+import { createAiSummaryTemplate } from '../utils/ai-summary-template';
+import { getTemplates, saveTemplateSettings } from './template-manager';
+import { updateTemplateList } from './template-ui';
+import { showSettingsSection } from './settings-section-ui';
 
 function saveOutlineSettings(changes: Partial<OutlineSettings>): Promise<void> {
 	return saveSettings({ outline: { ...generalSettings.outline, ...changes } });
@@ -49,6 +53,65 @@ function renderCollectionOptions(select: HTMLSelectElement, collections: Outline
 	}
 
 	select.value = collections?.some(c => c.id === collectionId) || (collections === null && collectionId) ? collectionId : '';
+}
+
+function setAiSummaryStatus(text: string, withInterpreterLink = false): void {
+	const status = document.getElementById('outline-ai-summary-status');
+	if (!status) return;
+	status.textContent = '';
+	if (!text) {
+		status.style.display = 'none';
+		return;
+	}
+	status.append(document.createTextNode(text));
+	if (withInterpreterLink) {
+		status.append(document.createTextNode(' '));
+		const link = document.createElement('a');
+		link.href = '#';
+		link.textContent = getMessage('outlineOpenInterpreterSettings');
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			showSettingsSection('interpreter');
+		});
+		status.append(link);
+	}
+	status.style.display = 'block';
+}
+
+/**
+ * Wires the "Add AI summary template" button: it creates a NEW template that
+ * prepends an Interpreter-generated summary callout, saves it, and refreshes the
+ * template list. When the Interpreter is off or no model is configured the
+ * template is still created, but a notice points the user at Interpreter
+ * settings so the prompt will actually run.
+ */
+function initializeAiSummaryTemplateButton(): void {
+	const button = document.getElementById('outline-add-ai-summary-template') as HTMLButtonElement | null;
+	if (!button) return;
+	button.addEventListener('click', async () => {
+		button.disabled = true;
+		try {
+			const templates = getTemplates();
+			const template = createAiSummaryTemplate(templates.map(t => t.name));
+			templates.push(template);
+			await saveTemplateSettings();
+			updateTemplateList();
+
+			const interpreterReady = generalSettings.interpreterEnabled
+				&& Array.isArray(generalSettings.models)
+				&& generalSettings.models.some(model => model.enabled);
+			if (interpreterReady) {
+				setAiSummaryStatus(getMessage('outlineAiSummaryTemplateAdded', template.name));
+			} else {
+				setAiSummaryStatus(getMessage('outlineAiSummaryNeedsInterpreter'), true);
+			}
+		} catch (error) {
+			console.error('Failed to add AI summary template:', error);
+			setAiSummaryStatus(getMessage('outlineErrorGeneric'));
+		} finally {
+			button.disabled = false;
+		}
+	});
 }
 
 /** Persists the URL field. Returns false if the URL is invalid. */
@@ -127,6 +190,10 @@ export async function initializeOutlineSettings(): Promise<void> {
 	initializeSettingToggle('outline-star-on-clip-toggle', generalSettings.outline.starOnClip, (checked) => {
 		saveOutlineSettings({ starOnClip: checked });
 	});
+	initializeSettingToggle('outline-related-documents-toggle', generalSettings.outline.showRelatedDocuments, (checked) => {
+		saveOutlineSettings({ showRelatedDocuments: checked });
+	});
+	initializeAiSummaryTemplateButton();
 	const frontmatterStyle = document.getElementById('outline-frontmatter-style') as HTMLSelectElement | null;
 	if (frontmatterStyle) {
 		frontmatterStyle.value = generalSettings.outline.frontmatterStyle;

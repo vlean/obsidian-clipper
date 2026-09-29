@@ -25,7 +25,7 @@ import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i
 import { formatPropertyValue } from '../utils/shared';
 import { buildOutlineDocumentText, normalizeOutlineTitle } from '../utils/outline-markdown';
 import { getOutlineErrorMessageKey, OutlineErrorKind } from '../utils/outline-client';
-import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse, OutlineSyncNotesResponse, OutlineShareDocumentResponse } from '../utils/outline-service';
+import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse, OutlineSyncNotesResponse, OutlineShareDocumentResponse, OutlineFindRelatedResponse, OutlineRelatedDocument } from '../utils/outline-service';
 import { getOutlineDocumentMapping, OutlineDocumentMapping } from '../utils/outline-documents-store';
 import { isDailyBehavior, tracksSourceUrl, OutlineSaveMode } from '../utils/outline-sync';
 import { buildOutlineComments, CommentableHighlight } from '../utils/outline-comments';
@@ -431,6 +431,13 @@ function setupEventListeners(tabId: number) {
 	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement;
 	if (noteNameField) {
 		noteNameField.addEventListener('input', () => adjustNoteNameHeight(noteNameField));
+		noteNameField.addEventListener('input', debounce(() => {
+			if (currentTabId !== undefined) {
+				getTabInfo(currentTabId)
+					.then(tab => { if (tab?.url) maybeLoadRelatedDocuments(tab.url); })
+					.catch(() => {});
+			}
+		}, 500));
 		noteNameField.addEventListener('keydown', function(e) {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
@@ -754,6 +761,9 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 
 				// Update variables panel if it's open
 				updateVariablesPanel(currentTemplate, currentVariables);
+
+				// Look up related Outline documents now that the title is known
+				maybeLoadRelatedDocuments(tab.url);
 			} else {
 				throw new Error('Unable to initialize page content.');
 			}
@@ -1551,6 +1561,137 @@ function renderOutlineClippedRow(): void {
 		browser.tabs.create({ url: mapping.url }).catch(error => console.error('Failed to open Outline document:', error));
 	};
 	initializeIcons(row);
+}
+
+// --- Related documents (looked up before clipping) ---
+
+// Cache related-doc lookups per "url\ntitle" so re-renders and field edits don't
+// re-hit the network. Results are stable for the life of the popup.
+const relatedDocumentsCache = new Map<string, OutlineRelatedDocument[]>();
+let relatedDocumentsToken = 0;
+
+/** True when Outline is configured and set to be the main save action. */
+function outlineIsMainAction(): boolean {
+	return loadedSettings?.saveBehavior === 'addToOutline' && Boolean(loadedSettings?.outline?.collectionId);
+}
+
+const requestRelatedDocuments = debounce((pageUrl: string, title: string) => {
+	loadRelatedDocuments(pageUrl, title).catch(error => console.warn('Related documents lookup failed:', error));
+}, 400);
+
+/** Kicks off a related-documents lookup for the current page/title, if enabled. */
+function maybeLoadRelatedDocuments(pageUrl: string): void {
+	if (!outlineIsMainAction() || !loadedSettings?.outline?.showRelatedDocuments || !pageUrl) {
+		renderRelatedDocuments([]);
+		return;
+	}
+	const title = getCurrentNoteTitle();
+	if (!title.trim()) {
+		renderRelatedDocuments([]);
+		return;
+	}
+	const key = `${pageUrl}\n${title.trim()}`;
+	const cached = relatedDocumentsCache.get(key);
+	if (cached) {
+		renderRelatedDocuments(cached);
+		return;
+	}
+	requestRelatedDocuments(pageUrl, title.trim());
+}
+
+function getCurrentNoteTitle(): string {
+	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement | null;
+	return noteNameField?.value ?? '';
+}
+
+async function loadRelatedDocuments(pageUrl: string, title: string): Promise<void> {
+	const key = `${pageUrl}\n${title}`;
+	const token = ++relatedDocumentsToken;
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: OUTLINE_ACTIONS.findRelated,
+			title,
+			sourceUrl: pageUrl,
+		}) as OutlineFindRelatedResponse | undefined;
+		const documents = response?.success && Array.isArray(response.documents) ? response.documents : [];
+		relatedDocumentsCache.set(key, documents);
+		// Ignore stale responses if a newer lookup started meanwhile
+		if (token === relatedDocumentsToken) renderRelatedDocuments(documents);
+	} catch (error) {
+		console.warn('Failed to load related Outline documents:', error);
+		if (token === relatedDocumentsToken) renderRelatedDocuments([]);
+	}
+}
+
+function renderRelatedDocuments(documents: OutlineRelatedDocument[]): void {
+	const container = document.getElementById('outline-related-documents') as HTMLDetailsElement | null;
+	const summary = document.getElementById('outline-related-documents-summary');
+	const list = document.getElementById('outline-related-documents-list');
+	if (!container || !summary || !list) return;
+
+	if (!documents.length) {
+		container.style.display = 'none';
+		container.open = false;
+		list.textContent = '';
+		return;
+	}
+
+	summary.textContent = getMessage('outlineRelatedDocuments', String(documents.length));
+	list.textContent = '';
+	for (const doc of documents) {
+		const item = document.createElement('li');
+		item.className = 'outline-related-document';
+
+		const link = document.createElement('a');
+		link.href = doc.url;
+		link.target = '_blank';
+		link.rel = 'noopener';
+		link.className = 'outline-related-document-link';
+		link.textContent = doc.title;
+		link.title = doc.title;
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			browser.tabs.create({ url: doc.url }).catch(error => console.error('Failed to open Outline document:', error));
+		});
+
+		const addButton = document.createElement('button');
+		addButton.type = 'button';
+		addButton.className = 'outline-related-document-add';
+		const addLabel = getMessage('outlineAddRelatedDocument', doc.title);
+		addButton.setAttribute('aria-label', addLabel);
+		addButton.title = addLabel;
+		const icon = document.createElement('i');
+		icon.setAttribute('data-lucide', 'plus');
+		addButton.appendChild(icon);
+		addButton.addEventListener('click', () => appendRelatedDocumentLink(doc));
+
+		item.appendChild(link);
+		item.appendChild(addButton);
+		list.appendChild(item);
+	}
+
+	container.style.display = 'block';
+	initializeIcons(container);
+}
+
+/** Appends a markdown link to the note content under a "Related" heading. */
+function appendRelatedDocumentLink(doc: OutlineRelatedDocument): void {
+	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement | null;
+	if (!noteContentField) return;
+	const heading = getMessage('outlineRelatedHeading');
+	const headingLine = `## ${heading}`;
+	const linkLine = `- [${doc.title}](${doc.url})`;
+
+	let value = noteContentField.value;
+	if (!value.includes(headingLine)) {
+		const needsGap = value.trim().length > 0;
+		value = `${value.replace(/\s+$/, '')}${needsGap ? '\n\n' : ''}${headingLine}\n${linkLine}\n`;
+	} else if (!value.includes(linkLine)) {
+		value = `${value.replace(/\s+$/, '')}\n${linkLine}\n`;
+	}
+	noteContentField.value = value;
+	// Let existing listeners (auto-resize, token counting) react
+	noteContentField.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** Reconciles the current page's highlight notes as Outline comments (no text change). */

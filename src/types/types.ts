@@ -81,6 +81,8 @@ export interface OutlineSettings {
 	showClippedBadge: boolean;
 	/** Star (add to the sidebar) each document when it is clipped to Outline */
 	starOnClip: boolean;
+	/** Look up documents with matching titles and show them in the popup before clipping */
+	showRelatedDocuments: boolean;
 }
 
 export interface ReaderSettings {

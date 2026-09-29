@@ -10,6 +10,7 @@ vi.mock('../utils/browser-polyfill', () => ({
 		storage: {
 			local: { get: async () => ({}), set: async () => {} },
 			sync: { get: async () => ({}), set: async () => {} },
+			onChanged: { addListener: () => {}, removeListener: () => {} },
 		},
 		i18n: { getMessage: (key: string) => key },
 	},

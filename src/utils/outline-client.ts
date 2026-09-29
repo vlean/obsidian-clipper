@@ -309,6 +309,68 @@ export async function findOutlineDocumentByTitle(
 	return match ? toOutlineDocument(match) : null;
 }
 
+export interface OutlineSearchResult {
+	id: string;
+	title: string;
+	/** Relative document path; combine with getOutlineDocumentUrl for an absolute link */
+	url: string;
+	collectionId?: string | null;
+	archivedAt?: string | null;
+	deletedAt?: string | null;
+}
+
+function toSearchResults(data: unknown): OutlineSearchResult[] {
+	if (!Array.isArray(data)) return [];
+	return data
+		.filter((doc): doc is RawOutlineDocument => Boolean(doc) && typeof (doc as any).id === 'string')
+		.map(doc => ({
+			id: doc.id,
+			title: String(doc.title ?? ''),
+			url: String(doc.url ?? ''),
+			collectionId: doc.collectionId ?? null,
+			archivedAt: doc.archivedAt ?? null,
+			deletedAt: doc.deletedAt ?? null,
+		}));
+}
+
+/**
+ * Searches document titles. Returns the raw result set (including archived and
+ * deleted documents) so callers can decide how to filter. `collectionId`
+ * optionally scopes the search to one collection.
+ */
+export async function searchOutlineDocumentTitles(
+	config: OutlineConfig,
+	query: string,
+	options?: OutlineRequestOptions & { collectionId?: string; limit?: number },
+): Promise<OutlineSearchResult[]> {
+	const trimmed = query.trim();
+	if (!trimmed) return [];
+	const body: Record<string, unknown> = { query: trimmed, limit: options?.limit ?? 10 };
+	if (options?.collectionId) body.collectionId = options.collectionId;
+	const result = await outlineRequest<{ data?: unknown }>(config, 'documents.search_titles', body, options);
+	return toSearchResults(result.data);
+}
+
+/**
+ * Full-text search over document contents. Results come back wrapped in
+ * `{ context, ranking, document }`, so we unwrap the `document` field.
+ */
+export async function searchOutlineDocuments(
+	config: OutlineConfig,
+	query: string,
+	options?: OutlineRequestOptions & { collectionId?: string; limit?: number },
+): Promise<OutlineSearchResult[]> {
+	const trimmed = query.trim();
+	if (!trimmed) return [];
+	const body: Record<string, unknown> = { query: trimmed, limit: options?.limit ?? 10 };
+	if (options?.collectionId) body.collectionId = options.collectionId;
+	const result = await outlineRequest<{ data?: unknown }>(config, 'documents.search', body, options);
+	const documents = Array.isArray(result.data)
+		? result.data.map((entry: any) => (entry && typeof entry === 'object' && 'document' in entry ? entry.document : entry))
+		: [];
+	return toSearchResults(documents);
+}
+
 export type OutlineEditMode = 'replace' | 'append' | 'prepend';
 
 export interface UpdateOutlineDocumentParams {

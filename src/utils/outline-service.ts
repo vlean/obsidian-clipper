@@ -17,6 +17,9 @@ import {
 	listOutlineCollections,
 	shareOutlineDocumentPublicly,
 	starOutlineDocument,
+	searchOutlineDocumentTitles,
+	searchOutlineDocuments,
+	OutlineSearchResult,
 } from './outline-client';
 import { OUTLINE_API_KEY_STORAGE_KEY, sanitizeOutlineSettings } from './storage-utils';
 import { OutlineSettings, Template } from '../types/types';
@@ -26,7 +29,7 @@ import { getOutlineDocState, updateOutlineDocState } from './outline-doc-state';
 import { OutlineImageStats, uploadOutlineImages } from './outline-images';
 import { OutlineCommentInput, OutlineCommentStats, syncOutlineComments, syncOutlineNoteComments } from './outline-comments';
 import { updateClippedBadgesForUrl } from './outline-badge';
-
+import { buildRelatedDocumentsQuery } from './outline-related';
 const VALID_BEHAVIORS: Template['behavior'][] = ['create', 'append-specific', 'append-daily', 'prepend-specific', 'prepend-daily', 'overwrite'];
 
 export const OUTLINE_ACTIONS = {
@@ -35,6 +38,7 @@ export const OUTLINE_ACTIONS = {
 	listCollections: 'outlineListCollections',
 	syncNotes: 'outlineSyncNotes',
 	shareDocument: 'outlineShareDocument',
+	findRelated: 'outlineFindRelated',
 } as const;
 
 export interface OutlineFailure {
@@ -72,6 +76,26 @@ export type OutlineSyncNotesResponse =
 export type OutlineShareDocumentResponse =
 	| { success: true; url: string }
 	| OutlineFailure;
+
+export interface OutlineRelatedDocument {
+	id: string;
+	title: string;
+	/** Absolute URL to the document */
+	url: string;
+}
+
+export interface OutlineFindRelatedRequest {
+	action: typeof OUTLINE_ACTIONS.findRelated;
+	/** Page title used to derive the search query */
+	title?: string;
+	/** Page being clipped; its already-mapped document is excluded from results */
+	sourceUrl?: string;
+}
+
+export interface OutlineFindRelatedResponse {
+	success: true;
+	documents: OutlineRelatedDocument[];
+}
 
 export interface OutlineShareDocumentRequest {
 	action: typeof OUTLINE_ACTIONS.shareDocument;
@@ -345,6 +369,67 @@ export async function handleOutlineShareDocument(request: OutlineShareDocumentRe
 }
 
 /**
+ * Finds documents in the workspace whose titles resemble the page title, so the
+ * popup can surface them before clipping. Never throws: any failure (bad query,
+ * network, permissions) resolves to an empty list so the popup is never blocked.
+ * Archived/deleted documents and the document already mapped to `sourceUrl` are
+ * excluded, and at most 5 results are returned.
+ */
+export async function handleOutlineFindRelated(request: OutlineFindRelatedRequest): Promise<OutlineFindRelatedResponse> {
+	const empty: OutlineFindRelatedResponse = { success: true, documents: [] };
+	try {
+		const query = buildRelatedDocumentsQuery(typeof request.title === 'string' ? request.title : '');
+		if (!query) return empty;
+
+		const { settings, config } = await loadOutlineState();
+		if (!config.baseUrl || !config.apiKey) return empty;
+
+		const sourceUrl = typeof request.sourceUrl === 'string' ? request.sourceUrl : '';
+		const excludedId = sourceUrl
+			? (await getOutlineDocumentMapping(sourceUrl, settings.baseUrl))?.documentId
+			: undefined;
+
+		const collectionId = settings.collectionId || undefined;
+		let results = await searchOutlineDocumentTitles(config, query, { collectionId, limit: 20 });
+
+		// Postgres title search can come up empty for reworded titles; fall back
+		// to full-text search over document contents.
+		if (results.length === 0) {
+			results = await searchOutlineDocuments(config, query, { collectionId, limit: 20 });
+		}
+
+		const documents = filterRelatedResults(results, excludedId, settings.baseUrl);
+		return { success: true, documents };
+	} catch (error) {
+		console.warn('Outline related lookup failed:', error);
+		return empty;
+	}
+}
+
+/** Excludes archived/deleted docs and the mapped doc, dedupes, maps to 5 absolute-URL results. */
+function filterRelatedResults(
+	results: OutlineSearchResult[],
+	excludedId: string | undefined,
+	baseUrl: string,
+): OutlineRelatedDocument[] {
+	const seen = new Set<string>();
+	const documents: OutlineRelatedDocument[] = [];
+	for (const doc of results) {
+		if (!doc.id || doc.archivedAt || doc.deletedAt) continue;
+		if (excludedId && doc.id === excludedId) continue;
+		if (seen.has(doc.id)) continue;
+		seen.add(doc.id);
+		documents.push({
+			id: doc.id,
+			title: doc.title || doc.url || doc.id,
+			url: getOutlineDocumentUrl(baseUrl, doc.url),
+		});
+		if (documents.length >= 5) break;
+	}
+	return documents;
+}
+
+/**
  * Handles Outline runtime messages. Returns a promise for handled actions,
  * or null when the message isn't an Outline action.
  */
@@ -366,6 +451,8 @@ export function handleOutlineMessage(request: { action?: string } & Record<strin
 			return handleOutlineSyncNotes(request as unknown as OutlineSyncNotesRequest);
 		case OUTLINE_ACTIONS.shareDocument:
 			return handleOutlineShareDocument(request as unknown as OutlineShareDocumentRequest);
+		case OUTLINE_ACTIONS.findRelated:
+			return handleOutlineFindRelated(request as unknown as OutlineFindRelatedRequest);
 		default:
 			return null;
 	}

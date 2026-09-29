@@ -132,6 +132,69 @@
 		}
 	}
 
+	.outline-related-documents {
+		margin: 8px var(--popup-padding) 0 var(--popup-padding);
+		font-size: var(--font-ui-smaller);
+
+		> summary {
+			cursor: pointer;
+			color: var(--text-muted);
+			padding: 2px 0;
+			user-select: none;
+			&:hover {
+				color: var(--text-normal);
+			}
+		}
+	}
+
+	.outline-related-documents-list {
+		list-style: none;
+		margin: 4px 0 0 0;
+		padding: 0;
+
+		.outline-related-document {
+			display: flex;
+			align-items: center;
+			gap: 0.375rem;
+			padding: 3px 0;
+		}
+
+		.outline-related-document-link {
+			flex: 1;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			color: var(--text-accent, var(--text-normal));
+			text-decoration: none;
+			&:hover {
+				text-decoration: underline;
+			}
+		}
+
+		.outline-related-document-add {
+			flex-shrink: 0;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 22px;
+			height: 22px;
+			padding: 0;
+			border: none;
+			border-radius: var(--clickable-icon-radius, 6px);
+			background-color: transparent;
+			color: var(--text-muted);
+			cursor: pointer;
+			&:hover {
+				background-color: var(--background-modifier-hover);
+				color: var(--text-normal);
+			}
+			.lucide-icon {
+				width: 14px;
+				height: 14px;
+			}
+		}
+	}
+
 	#note-name-field {
 		border: none;
 		border-radius: 0;
