@@ -699,6 +699,18 @@
 	"outlineSelectCollection": {
 		"message": "选择集合"
 	},
+	"outlineSyncComments": {
+		"message": "批注同步为评论"
+	},
+	"outlineSyncCommentsDescription": {
+		"message": "将高亮批注发布为挂在对应文字上的 Outline 评论。覆盖文档时，Web Clipper 创建的评论会重新创建。"
+	},
+	"outlineUploadImages": {
+		"message": "图片转存到 Outline"
+	},
+	"outlineUploadImagesDescription": {
+		"message": "将页面中的图片保存为 Outline 附件，原网站删除图片后仍可显示。无法获取的图片保留为外链。"
+	},
 	"overwriteNote": {
 		"message": "覆盖笔记"
 	},
@@ -1034,6 +1046,17 @@
 	},
 	"savedToOutline": {
 		"message": "已保存到 Outline"
+	},
+	"savedToOutlineWithWarnings": {
+		"message": "已保存 · $1 张图片、$2 条批注未同步",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
 	},
 	"saveFile": {
 		"message": "保存文件..."

@@ -37,7 +37,7 @@ beforeEach(() => {
 		<select id="template-outline-collection"></select>
 	</div>`;
 	sendMessage.mockReset();
-	generalSettings.outline = { baseUrl: 'https://wiki.example.com', collectionId: 'inbox', collectionName: 'Inbox', publish: true };
+	generalSettings.outline = { baseUrl: 'https://wiki.example.com', collectionId: 'inbox', collectionName: 'Inbox', publish: true, uploadImages: true, syncComments: true };
 });
 
 describe('populateTemplateOutlineCollection', () => {

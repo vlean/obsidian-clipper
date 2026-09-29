@@ -16,6 +16,9 @@ import { OUTLINE_API_KEY_STORAGE_KEY, sanitizeOutlineSettings } from './storage-
 import { OutlineSettings, Template } from '../types/types';
 import { OutlineSaveMode, saveOutlineDocument, tracksSourceUrl } from './outline-sync';
 import { getOutlineDocumentMapping, setOutlineDocumentMapping } from './outline-documents-store';
+import { getOutlineDocState, updateOutlineDocState } from './outline-doc-state';
+import { OutlineImageStats, uploadOutlineImages } from './outline-images';
+import { OutlineCommentInput, OutlineCommentStats, syncOutlineComments } from './outline-comments';
 
 const VALID_BEHAVIORS: Template['behavior'][] = ['create', 'append-specific', 'append-daily', 'prepend-specific', 'prepend-daily', 'overwrite'];
 
@@ -35,7 +38,17 @@ export type OutlineTestConnectionResponse =
 	| OutlineFailure;
 
 export type OutlineSaveDocumentResponse =
-	| { success: true; id: string; title: string; url: string; mode: OutlineSaveMode }
+	| {
+		success: true;
+		id: string;
+		title: string;
+		url: string;
+		mode: OutlineSaveMode;
+		/** Present when image upload is enabled */
+		images?: OutlineImageStats;
+		/** Present when comment sync ran */
+		comments?: OutlineCommentStats;
+	}
 	| OutlineFailure;
 
 export interface OutlineSaveDocumentRequest {
@@ -50,6 +63,15 @@ export interface OutlineSaveDocumentRequest {
 	forceCreate?: boolean;
 	/** Overrides the configured default collection */
 	collectionId?: string;
+	/** Highlight notes to post as anchored comments */
+	comments?: OutlineCommentInput[];
+}
+
+function sanitizeCommentInputs(value: unknown): OutlineCommentInput[] {
+	if (!Array.isArray(value)) return [];
+	return value.filter((item): item is OutlineCommentInput =>
+		Boolean(item) && typeof item.key === 'string' && typeof item.text === 'string' && item.text.trim().length > 0
+	);
 }
 
 async function loadOutlineState(): Promise<{ settings: OutlineSettings; config: OutlineConfig; silentOpen: boolean }> {
@@ -93,6 +115,23 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 		const tracked = tracksSourceUrl(behavior) && Boolean(sourceUrl);
 		const mapping = tracked ? await getOutlineDocumentMapping(sourceUrl, settings.baseUrl) : null;
 
+		let images: OutlineImageStats | undefined;
+		const transformText = settings.uploadImages
+			? async (text: string, documentId: string): Promise<string> => {
+				try {
+					const state = await getOutlineDocState(documentId);
+					const result = await uploadOutlineImages(config, text, { documentId, attachments: state.attachments });
+					images = { uploaded: result.uploaded, reused: result.reused, failed: result.failed, skipped: result.skipped };
+					if (result.uploaded > 0) await updateOutlineDocState(documentId, { attachments: result.attachments });
+					return result.text;
+				} catch (error) {
+					// Never block the clip on image handling
+					console.error('Outline image upload failed:', error);
+					return text;
+				}
+			}
+			: undefined;
+
 		const { document, mode } = await saveOutlineDocument(config, {
 			title: request.title,
 			text: request.text,
@@ -101,8 +140,33 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 			publish: settings.publish,
 			mappedDocumentId: mapping?.documentId,
 			forceCreate: Boolean(request.forceCreate),
+			transformText,
 		});
 		const url = getOutlineDocumentUrl(settings.baseUrl, document.url);
+
+		// Replacing the text drops existing comment anchors, so rebuild ours
+		let comments: OutlineCommentStats | undefined;
+		if (settings.syncComments) {
+			const inputs = sanitizeCommentInputs(request.comments);
+			const rebuild = mode === 'updated';
+			const state = await getOutlineDocState(document.id);
+			const hasExisting = Object.keys(state.comments).length > 0;
+			if (inputs.length > 0 || (rebuild && hasExisting)) {
+				try {
+					const result = await syncOutlineComments(config, {
+						documentId: document.id,
+						inputs,
+						existing: state.comments,
+						rebuild,
+					});
+					comments = { created: result.created, anchored: result.anchored, failed: result.failed, removed: result.removed };
+					await updateOutlineDocState(document.id, { comments: result.comments });
+				} catch (error) {
+					console.error('Outline comment sync failed:', error);
+					comments = { created: 0, anchored: 0, failed: inputs.length, removed: 0 };
+				}
+			}
+		}
 
 		if (tracked) {
 			await setOutlineDocumentMapping(sourceUrl, {
@@ -119,7 +183,7 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 			browser.tabs.create({ url }).catch(error => console.error('Failed to open Outline document:', error));
 		}
 
-		return { success: true, id: document.id, title: document.title, url, mode };
+		return { success: true, id: document.id, title: document.title, url, mode, images, comments };
 	} catch (error) {
 		console.error('Failed to save Outline document:', error);
 		return toFailure(error);

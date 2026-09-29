@@ -13,6 +13,8 @@ export const DEFAULT_OUTLINE_SETTINGS: OutlineSettings = {
 	collectionId: '',
 	collectionName: '',
 	publish: true,
+	uploadImages: true,
+	syncComments: true,
 };
 
 export async function getOutlineApiKey(): Promise<string> {
@@ -32,6 +34,8 @@ export function sanitizeOutlineSettings(raw: unknown): OutlineSettings {
 		collectionId: typeof data.collectionId === 'string' ? data.collectionId : DEFAULT_OUTLINE_SETTINGS.collectionId,
 		collectionName: typeof data.collectionName === 'string' ? data.collectionName : DEFAULT_OUTLINE_SETTINGS.collectionName,
 		publish: typeof data.publish === 'boolean' ? data.publish : DEFAULT_OUTLINE_SETTINGS.publish,
+		uploadImages: typeof data.uploadImages === 'boolean' ? data.uploadImages : DEFAULT_OUTLINE_SETTINGS.uploadImages,
+		syncComments: typeof data.syncComments === 'boolean' ? data.syncComments : DEFAULT_OUTLINE_SETTINGS.syncComments,
 	};
 }
 

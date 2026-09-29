@@ -56,6 +56,8 @@ export const generalSettings: Settings = {
 		collectionId: '',
 		collectionName: '',
 		publish: true,
+		uploadImages: false,
+		syncComments: false,
 	},
 };
 

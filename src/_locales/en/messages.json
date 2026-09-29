@@ -699,6 +699,18 @@
 	"outlineSelectCollection": {
 		"message": "Select a collection"
 	},
+	"outlineSyncComments": {
+		"message": "Sync highlight notes as comments"
+	},
+	"outlineSyncCommentsDescription": {
+		"message": "Post highlight notes as Outline comments attached to the highlighted text. When a document is overwritten, comments created by Web Clipper are recreated."
+	},
+	"outlineUploadImages": {
+		"message": "Save images to Outline"
+	},
+	"outlineUploadImagesDescription": {
+		"message": "Store images from the page as Outline attachments, so they keep working if the original site removes them. Images that can't be fetched stay as links."
+	},
 	"overwriteNote": {
 		"message": "Overwrite note"
 	},
@@ -1034,6 +1046,17 @@
 	},
 	"savedToOutline": {
 		"message": "Saved to Outline"
+	},
+	"savedToOutlineWithWarnings": {
+		"message": "Saved · $1 images, $2 notes not synced",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
 	},
 	"saveFile": {
 		"message": "Save file..."

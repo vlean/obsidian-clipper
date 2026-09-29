@@ -330,3 +330,69 @@ export async function updateOutlineDocument(
 	}
 	return toOutlineDocument(result.data);
 }
+
+/**
+ * Asks Outline to download a remote file and store it as an attachment of the
+ * document. Returns the attachment URL to use in the document markdown.
+ */
+export async function createOutlineAttachmentFromUrl(
+	config: OutlineConfig,
+	url: string,
+	documentId: string,
+	options?: OutlineRequestOptions,
+): Promise<string> {
+	const result = await outlineRequest<{ data?: { url?: string } }>(
+		config,
+		'attachments.createFromUrl',
+		{ url, documentId },
+		options,
+	);
+	if (!result.data || typeof result.data.url !== 'string' || !result.data.url) {
+		throw new OutlineApiError('server', 'Unexpected response from attachments.createFromUrl');
+	}
+	return result.data.url;
+}
+
+export interface CreateOutlineCommentParams {
+	documentId: string;
+	/** Comment body in markdown (max 10,000 characters) */
+	text: string;
+	anchorText?: string;
+	anchorPrefix?: string;
+	anchorSuffix?: string;
+}
+
+export async function createOutlineComment(
+	config: OutlineConfig,
+	params: CreateOutlineCommentParams,
+	options?: OutlineRequestOptions,
+): Promise<string> {
+	const body: Record<string, unknown> = { documentId: params.documentId, text: params.text };
+	if (params.anchorText) {
+		body.anchorText = params.anchorText;
+		if (params.anchorPrefix) body.anchorPrefix = params.anchorPrefix;
+		if (params.anchorSuffix) body.anchorSuffix = params.anchorSuffix;
+	}
+	const result = await outlineRequest<{ data?: { id?: string } }>(config, 'comments.create', body, options);
+	if (!result.data || typeof result.data.id !== 'string') {
+		throw new OutlineApiError('server', 'Unexpected response from comments.create');
+	}
+	return result.data.id;
+}
+
+/** Deletes a comment. Returns false when it was already gone or is inaccessible. */
+export async function deleteOutlineComment(
+	config: OutlineConfig,
+	id: string,
+	options?: OutlineRequestOptions,
+): Promise<boolean> {
+	try {
+		await outlineRequest(config, 'comments.delete', { id }, options);
+		return true;
+	} catch (error) {
+		if (error instanceof OutlineApiError && (error.kind === 'notFound' || error.kind === 'forbidden')) {
+			return false;
+		}
+		throw error;
+	}
+}

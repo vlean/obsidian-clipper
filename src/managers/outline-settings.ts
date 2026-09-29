@@ -103,6 +103,12 @@ export async function initializeOutlineSettings(): Promise<void> {
 	initializeSettingToggle('outline-publish-toggle', generalSettings.outline.publish, (checked) => {
 		saveOutlineSettings({ publish: checked });
 	});
+	initializeSettingToggle('outline-upload-images-toggle', generalSettings.outline.uploadImages, (checked) => {
+		saveOutlineSettings({ uploadImages: checked });
+	});
+	initializeSettingToggle('outline-sync-comments-toggle', generalSettings.outline.syncComments, (checked) => {
+		saveOutlineSettings({ syncComments: checked });
+	});
 
 	connectButton.addEventListener('click', async () => {
 		// Persist the current field values first; the background reads them from storage

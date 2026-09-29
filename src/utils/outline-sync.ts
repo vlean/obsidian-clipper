@@ -33,6 +33,13 @@ export interface OutlineSaveInput {
 	/** Document previously created from the same page URL, if any */
 	mappedDocumentId?: string;
 	forceCreate?: boolean;
+	/**
+	 * Rewrites the text once the target document id is known (e.g. to re-host
+	 * images as attachments of that document). Updates run it before writing;
+	 * new documents are created with the original text and then updated with
+	 * the transformed text, so a failing transform never loses the clip.
+	 */
+	transformText?: (text: string, documentId: string) => Promise<string>;
 }
 
 export interface OutlineSaveResult {
@@ -70,15 +77,26 @@ export async function saveOutlineDocument(
 	input: OutlineSaveInput,
 	options?: OutlineRequestOptions,
 ): Promise<OutlineSaveResult> {
-	const create = async (): Promise<OutlineSaveResult> => ({
-		document: await createOutlineDocument(config, {
+	const create = async (): Promise<OutlineSaveResult> => {
+		let document = await createOutlineDocument(config, {
 			title: input.title,
 			text: input.text,
 			collectionId: input.collectionId,
 			publish: input.publish,
-		}, options),
-		mode: 'created',
-	});
+		}, options);
+		if (input.transformText) {
+			const text = await input.transformText(input.text, document.id);
+			if (text !== input.text) {
+				document = await updateOutlineDocument(config, {
+					id: document.id,
+					text,
+					editMode: 'replace',
+					title: input.title,
+				}, options);
+			}
+		}
+		return { document, mode: 'created' };
+	};
 
 	if (input.forceCreate) return create();
 
@@ -97,9 +115,10 @@ export async function saveOutlineDocument(
 	if (!target) return create();
 
 	const editMode = editModeFor(input.behavior);
+	const text = input.transformText ? await input.transformText(input.text, target.id) : input.text;
 	const document = await updateOutlineDocument(config, {
 		id: target.id,
-		text: input.text,
+		text,
 		editMode,
 		title: input.title,
 	}, options);

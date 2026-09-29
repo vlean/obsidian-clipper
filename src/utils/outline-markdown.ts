@@ -173,3 +173,29 @@ export function normalizeOutlineTitle(title: string, fallback = 'Untitled'): str
 	if (chars.length <= OUTLINE_TITLE_MAX_LENGTH) return collapsed;
 	return chars.slice(0, OUTLINE_TITLE_MAX_LENGTH - 1).join('').trimEnd() + '…';
 }
+
+/**
+ * Applies `transform` to every piece of text outside fenced code blocks and
+ * inline code spans. Used to rewrite image URLs without touching code.
+ */
+export function mapOutsideCode(markdown: string, transform: (text: string) => string): string {
+	const lines = markdown.split('\n');
+	let fence: string | null = null;
+	return lines.map(line => {
+		const fenceMatch = line.match(FENCE_RE);
+		if (fence) {
+			if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length && line.trim() === fenceMatch[1]) {
+				fence = null;
+			}
+			return line;
+		}
+		if (fenceMatch) {
+			fence = fenceMatch[1];
+			return line;
+		}
+		return line
+			.split(/(`+[^`]*?`+)/g)
+			.map((part, index) => (index % 2 === 1 ? part : transform(part)))
+			.join('');
+	}).join('\n');
+}

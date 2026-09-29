@@ -34,6 +34,8 @@ beforeEach(() => {
 		collectionId: 'default-col',
 		collectionName: 'Inbox',
 		publish: false,
+		uploadImages: false,
+		syncComments: false,
 	};
 	localStore.outline_api_key = 'ol_api_secret';
 	tabsCreate.mockClear();
@@ -134,6 +136,76 @@ describe('handleOutlineMessage', () => {
 			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', behavior: 'bogus',
 		});
 		expect(response).toMatchObject({ success: true, mode: 'created' });
+	});
+
+	test('uploads images and syncs note comments after saving', async () => {
+		syncStore.outline_settings = { ...(syncStore.outline_settings as object), uploadImages: true, syncComments: true };
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // create
+			.mockResolvedValueOnce(jsonResponse({ data: { url: '/api/attachments.redirect?id=a1' } })) // image
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // update text
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'c1' } })); // comment
+
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: 'Intro\n![img](https://cdn.example.org/a.png)',
+			sourceUrl: 'https://example.com/post',
+			comments: [{ key: 'k1', text: 'note', anchorText: 'Intro' }, { key: 'bad' }],
+		});
+
+		expect(response).toMatchObject({
+			success: true, mode: 'created',
+			images: { uploaded: 1, failed: 0 },
+			comments: { created: 1, anchored: 1, failed: 0 },
+		});
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual([
+			'documents.create', 'attachments.createFromUrl', 'documents.update', 'comments.create',
+		]);
+		expect(JSON.parse((fetchMock.mock.calls[2][1] as RequestInit).body as string).text)
+			.toBe('Intro\n![img](/api/attachments.redirect?id=a1)');
+		expect((localStore.outline_doc_state as any).d1).toMatchObject({
+			attachments: { 'https://cdn.example.org/a.png': '/api/attachments.redirect?id=a1' },
+			comments: { k1: 'c1' },
+		});
+	});
+
+	test('overwriting rebuilds previously created comments and reuses attachments', async () => {
+		syncStore.outline_settings = { ...(syncStore.outline_settings as object), uploadImages: true, syncComments: true };
+		localStore.outline_documents = {
+			'https://example.com/post': { documentId: 'd1', baseUrl: 'https://wiki.example.com', url: '', title: '', updatedAt: '' },
+		};
+		localStore.outline_doc_state = {
+			d1: { updatedAt: '', attachments: { 'https://cdn.example.org/a.png': '/att/a1' }, comments: { k1: 'old' } },
+		};
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // info
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // update
+			.mockResolvedValueOnce(jsonResponse({ success: true })) // delete old comment
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'new' } })); // recreate
+
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '![img](https://cdn.example.org/a.png)',
+			behavior: 'create', sourceUrl: 'https://example.com/post',
+			comments: [{ key: 'k1', text: 'note', anchorText: 'x' }],
+		});
+		expect(response).toMatchObject({ success: true, mode: 'updated', images: { uploaded: 0, reused: 1 }, comments: { created: 1, removed: 1 } });
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual([
+			'documents.info', 'documents.update', 'comments.delete', 'comments.create',
+		]);
+		expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string).text).toBe('![img](/att/a1)');
+		expect((localStore.outline_doc_state as any).d1.comments).toEqual({ k1: 'new' });
+	});
+
+	test('skips images and comments when both are disabled', async () => {
+		syncStore.outline_settings = { ...(syncStore.outline_settings as object), uploadImages: false, syncComments: false };
+		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
+		const response = await handleOutlineMessage({
+			action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '![img](https://cdn.example.org/a.png)',
+			comments: [{ key: 'k1', text: 'note' }],
+		});
+		expect(response).toMatchObject({ success: true });
+		expect((response as any).images).toBeUndefined();
+		expect((response as any).comments).toBeUndefined();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	test('does not open the document when silent open is enabled', async () => {

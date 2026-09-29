@@ -28,6 +28,7 @@ import { getOutlineErrorMessageKey } from '../utils/outline-client';
 import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse } from '../utils/outline-service';
 import { getOutlineDocumentMapping, OutlineDocumentMapping } from '../utils/outline-documents-store';
 import { isDailyBehavior, tracksSourceUrl, OutlineSaveMode } from '../utils/outline-sync';
+import { buildOutlineComments, CommentableHighlight } from '../utils/outline-comments';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -38,6 +39,8 @@ let loadedSettings: Settings;
 let currentTemplate: Template | null = null;
 let templates: Template[] = [];
 let currentVariables: { [key: string]: string } = {};
+// Raw highlights of the current page, used to post notes as Outline comments
+let currentHighlights: CommentableHighlight[] = [];
 let currentTabId: number | undefined;
 let lastSelectedVault: string | null = null;
 
@@ -729,10 +732,12 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 				extractedData.site,
 				extractedData.wordCount,
 				extractedData.language || '',
-				extractedData.metaTags
+				extractedData.metaTags,
+				extractedData.highlightRecords || []
 			);
 			if (initializedContent) {
 				currentVariables = initializedContent.currentVariables;
+				currentHighlights = (extractedData.highlightRecords || []) as CommentableHighlight[];
 				console.log('Updated currentVariables:', currentVariables);
 				await fillTemplateFieldValues(
 					tabId,
@@ -1360,6 +1365,10 @@ async function ensureInterpreterFinished(): Promise<void> {
 }
 
 let outlineSaveInProgress = false;
+
+function htmlToPlainText(html: string): string {
+	return new DOMParser().parseFromString(html, 'text/html').body.textContent || '';
+}
 let currentOutlineMapping: OutlineDocumentMapping | null = null;
 let outlineMappingUrl: string | null = null;
 
@@ -1424,8 +1433,13 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			clipButton.textContent = getMessage('savingToOutline');
 		}
 
+		const comments = generalSettings.outline.syncComments && generalSettings.highlighterEnabled
+			? buildOutlineComments(currentHighlights, htmlToPlainText)
+			: [];
+
 		const response = await browser.runtime.sendMessage({
 			action: OUTLINE_ACTIONS.saveDocument,
+			comments,
 			title,
 			text,
 			behavior,
@@ -1447,15 +1461,24 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			: generalSettings.outline.collectionName;
 		await incrementStat('addToOutline', collectionName, '', tabInfo.url, tabInfo.title);
 
+		// Partial failures (images kept as links, notes not posted) don't fail the save
+		const failedImages = response.images?.failed ?? 0;
+		const failedComments = response.comments?.failed ?? 0;
+		const hasWarnings = failedImages > 0 || failedComments > 0;
+		if (hasWarnings) {
+			console.warn('Outline save completed with warnings:', response.images, response.comments);
+		}
 		if (clipButton) {
-			clipButton.textContent = getMessage(OUTLINE_SAVED_MESSAGE[response.mode] ?? 'savedToOutline');
+			clipButton.textContent = hasWarnings
+				? getMessage('savedToOutlineWithWarnings', [String(failedImages), String(failedComments)])
+				: getMessage(OUTLINE_SAVED_MESSAGE[response.mode] ?? 'savedToOutline');
 		}
 		if (tabInfo.url) {
 			// Next clip of this page updates the document
 			refreshOutlineMapping(tabInfo.url);
 		}
 		if (!isSidePanel) {
-			setTimeout(() => window.close(), 500);
+			setTimeout(() => window.close(), hasWarnings ? 3000 : 500);
 		} else if (clipButton) {
 			setTimeout(() => {
 				clipButton.textContent = originalButtonText;

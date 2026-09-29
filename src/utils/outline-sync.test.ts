@@ -139,6 +139,38 @@ describe('saveOutlineDocument', () => {
 	});
 });
 
+describe('saveOutlineDocument transformText', () => {
+	test('new documents are created first, then updated with the transformed text', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({ data: doc('new', 'Page title') }))
+			.mockResolvedValueOnce(jsonResponse({ data: doc('new', 'Page title') }));
+		const transformText = vi.fn(async (text: string, id: string) => `${text} [${id}]`);
+		const result = await saveOutlineDocument(config, { ...base, transformText }, { fetchImpl });
+		expect(result.mode).toBe('created');
+		expect(transformText).toHaveBeenCalledWith('Body', 'new');
+		expect(calls(fetchImpl)).toEqual([
+			{ method: 'documents.create', body: { title: 'Page title', text: 'Body', collectionId: 'col', publish: true } },
+			{ method: 'documents.update', body: { id: 'new', text: 'Body [new]', title: 'Page title' } },
+		]);
+	});
+
+	test('skips the extra update when the text is unchanged', async () => {
+		const fetchImpl = vi.fn(async () => jsonResponse({ data: doc('new', 'Page title') }));
+		await saveOutlineDocument(config, { ...base, transformText: async text => text }, { fetchImpl });
+		expect(calls(fetchImpl).map(c => c.method)).toEqual(['documents.create']);
+	});
+
+	test('updates transform the text before writing', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({ data: [doc('list', 'Page title')] }))
+			.mockResolvedValueOnce(jsonResponse({ data: doc('list', 'Page title') }));
+		await saveOutlineDocument(config, {
+			...base, behavior: 'append-specific', transformText: async (text, id) => `${text}@${id}`,
+		}, { fetchImpl });
+		expect(calls(fetchImpl)[1]).toEqual({ method: 'documents.update', body: { id: 'list', text: '\n\nBody@list', editMode: 'append' } });
+	});
+});
+
 describe('outline document mappings', () => {
 	const mapping = (id: string, updatedAt = '2026-01-01T00:00:00.000Z'): OutlineDocumentMapping => ({
 		documentId: id, baseUrl: 'https://wiki.example.com/', url: `https://wiki.example.com/doc/${id}`, title: id, updatedAt,

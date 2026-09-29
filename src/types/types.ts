@@ -63,6 +63,10 @@ export interface OutlineSettings {
 	collectionName: string;
 	/** Publish documents immediately instead of creating drafts */
 	publish: boolean;
+	/** Re-host remote images as Outline attachments */
+	uploadImages: boolean;
+	/** Post highlight notes as comments anchored to the highlighted text */
+	syncComments: boolean;
 }
 
 export interface ReaderSettings {
