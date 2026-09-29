@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, test, expect } from 'vitest';
-import { processHighlights } from './content-extractor';
+import { processHighlights, initializePageContent } from './content-extractor';
 import { TextHighlightData } from './highlighter';
 
 // Default settings already use highlighterEnabled + 'highlight-inline', the
@@ -50,7 +50,6 @@ describe('processHighlights — highlight-inline', () => {
 
 describe('initializePageContent highlight records', () => {
 	test('{{highlights}} carries notes from full highlight records', async () => {
-		const { initializePageContent } = await import('./content-extractor');
 		const record: TextHighlightData = {
 			id: '1700000000000', type: 'text', xpath: '', content: 'Key sentence',
 			startOffset: 0, endOffset: 12, notes: ['Why it matters'],

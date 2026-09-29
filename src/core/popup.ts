@@ -266,6 +266,11 @@ function setupMessageListeners() {
 		} else if (request.action === "tabUrlChanged") {
 			if (request.tabId === currentTabId) {
 				if (currentTabId !== undefined) {
+					// A new page starts from the defaults (side panel stays open across pages)
+					outlineCollectionOverride = null;
+					outlineStarOverride = null;
+					renderOutlineCollectionPicker();
+					renderOutlineStarToggle();
 					refreshFields(currentTabId);
 				}
 			}
@@ -277,6 +282,10 @@ function setupMessageListeners() {
 					showError('pageCannotBeClipped');
 				} else if (request.isValidUrl) {
 					if (currentTabId !== undefined) {
+						outlineCollectionOverride = null;
+						outlineStarOverride = null;
+						renderOutlineCollectionPicker();
+						renderOutlineStarToggle();
 						refreshFields(currentTabId); // Force template check when URL changes
 					}
 				} else if (request.isBlankPage) {
@@ -710,7 +719,9 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 				console.log('Matched template:', matchedTemplate);
 				currentTemplate = matchedTemplate;
 				outlineCollectionOverride = null;
+				outlineStarOverride = null;
 				renderOutlineCollectionPicker();
+				renderOutlineStarToggle();
 				updateTemplateDropdown();
 			}
 		}
@@ -1119,9 +1130,11 @@ function refreshPopup() {
 
 function handleTemplateChange(templateId: string) {
 	currentTemplate = templates.find(t => t.id === templateId) || templates[0];
-	// A template switch resets the one-off collection choice to the template's
+	// A template switch resets the one-off collection and star choices
 	outlineCollectionOverride = null;
+	outlineStarOverride = null;
 	renderOutlineCollectionPicker();
+	renderOutlineStarToggle();
 	refreshFields(currentTabId!, { checkTemplateTriggers: false });
 }
 

@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from 'vitest';
 import {
 	OutlineApiError,
 	createOutlineDocument,
+	ensureOutlineDocumentPath,
+	splitOutlinePath,
 	getOutlineAuthInfo,
 	getOutlineDocumentUrl,
 	getOutlineErrorMessageKey,
@@ -182,7 +184,6 @@ describe('getOutlineErrorMessageKey', () => {
 
 describe('ensureOutlineDocumentPath', () => {
 	test('reuses existing levels case-insensitively without creating documents', async () => {
-		const { ensureOutlineDocumentPath, splitOutlinePath } = await import('./outline-client');
 		expect(splitOutlinePath('/a// b /')).toEqual(['a', 'b']);
 		const fetchImpl = vi.fn(async () => jsonResponse({ data: [
 			{ id: 'c', title: 'Clippings', children: [{ id: 't', title: 'Tech', children: [] }] },
@@ -192,7 +193,6 @@ describe('ensureOutlineDocumentPath', () => {
 	});
 
 	test('returns undefined for an empty path', async () => {
-		const { ensureOutlineDocumentPath } = await import('./outline-client');
 		const fetchImpl = vi.fn();
 		await expect(ensureOutlineDocumentPath(config, 'col', [], { fetchImpl })).resolves.toBeUndefined();
 		expect(fetchImpl).not.toHaveBeenCalled();
