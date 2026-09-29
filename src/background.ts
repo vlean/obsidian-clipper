@@ -114,6 +114,32 @@ if (typeof browser !== 'undefined' && browser.webRequest?.onBeforeSendHeaders) {
 	} catch { /* webRequest not available */ }
 }
 
+// Locale bundles requested by content scripts (which can't fetch extension
+// URLs). Fetched from the packaged _locales and cached in memory so repeated
+// requests across tabs don't re-read the file.
+const localeMessageCache = new Map<string, Record<string, unknown> | null>();
+
+async function getLocaleMessages(code: string): Promise<Record<string, unknown> | null> {
+	if (localeMessageCache.has(code)) {
+		return localeMessageCache.get(code) ?? null;
+	}
+	try {
+		const url = browser.runtime.getURL(`_locales/${code}/messages.json`);
+		const response = await fetch(url);
+		if (!response.ok) {
+			localeMessageCache.set(code, null);
+			return null;
+		}
+		const messages = await response.json() as Record<string, unknown>;
+		localeMessageCache.set(code, messages);
+		return messages;
+	} catch (error) {
+		console.debug(`Failed to load locale messages for ${code}:`, error);
+		localeMessageCache.set(code, null);
+		return null;
+	}
+}
+
 let sidePanelOpenWindows: Set<number> = new Set();
 let highlighterModeState: { [tabId: number]: boolean } = {};
 let readerModeState: { [tabId: number]: boolean } = {};
@@ -463,6 +489,27 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 				.catch((error) => sendResponse({
 					success: false,
 					errorKind: 'server',
+					error: error instanceof Error ? error.message : String(error),
+				}));
+			return true;
+		}
+
+		if (typedRequest.action === 'getLocaleMessages') {
+			const code = (typedRequest as any).code as string | undefined;
+			if (!code || !/^[a-zA-Z_-]+$/.test(code)) {
+				sendResponse({ success: false, error: 'Invalid locale code' });
+				return true;
+			}
+			getLocaleMessages(code)
+				.then((messages) => {
+					if (messages) {
+						sendResponse({ success: true, messages });
+					} else {
+						sendResponse({ success: false, error: 'Locale not found' });
+					}
+				})
+				.catch((error) => sendResponse({
+					success: false,
 					error: error instanceof Error ? error.message : String(error),
 				}));
 			return true;

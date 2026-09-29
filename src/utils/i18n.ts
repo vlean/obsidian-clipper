@@ -65,6 +65,100 @@ export function setDayjsLocale(locale: string): void {
 
 let currentLanguage: string | null = null;
 
+// Shape of a single locale's messages.json (Chrome extension i18n format).
+interface MessageEntry {
+	message: string;
+	placeholders?: { [key: string]: { content: string } };
+}
+type MessageBundle = { [key: string]: MessageEntry };
+
+// In-memory cache of loaded locale bundles, keyed by language code. Populated
+// on demand by initializeI18n(); getMessage() only reads from here so it can
+// stay synchronous. Nothing is bundled at build time — the JSON is loaded at
+// runtime (fetch on extension pages, background message from content scripts).
+const loadedMessages: { [code: string]: MessageBundle } = {};
+
+/**
+ * Loads a locale bundle at runtime.
+ *
+ * - Extension pages (popup, settings, highlights, reader page) can read the
+ *   packaged JSON directly via fetch(runtime.getURL(...)).
+ * - Content scripts run in the page's origin and cannot fetch extension URLs
+ *   (and we deliberately do NOT expose _locales as web_accessible_resources),
+ *   so they ask the background page, which fetches and caches it.
+ *
+ * Tests can replace this with setLocaleLoader() since fetch(runtime.getURL)
+ * doesn't work under node/jsdom.
+ */
+type LocaleLoader = (code: string) => Promise<MessageBundle | null>;
+
+// True when running on an extension page (popup/settings/etc.), where we can
+// fetch packaged resources directly. Content scripts run on http(s) pages.
+function isExtensionPageContext(): boolean {
+	try {
+		return typeof location !== 'undefined'
+			&& (location.protocol === 'chrome-extension:'
+				|| location.protocol === 'moz-extension:'
+				|| location.protocol === 'safari-web-extension:');
+	} catch {
+		return false;
+	}
+}
+
+const defaultLocaleLoader: LocaleLoader = async (code: string) => {
+	try {
+		if (isExtensionPageContext()) {
+			const url = browser.runtime.getURL(`_locales/${code}/messages.json`);
+			const response = await fetch(url);
+			if (!response.ok) return null;
+			return await response.json() as MessageBundle;
+		}
+		// Content script: delegate to the background page.
+		const result = await browser.runtime.sendMessage({ action: 'getLocaleMessages', code }) as
+			{ success?: boolean; messages?: MessageBundle } | undefined;
+		if (result && result.success && result.messages) {
+			return result.messages;
+		}
+		return null;
+	} catch (error) {
+		console.warn(`Failed to load messages for language ${code}`, error);
+		return null;
+	}
+};
+
+let localeLoader: LocaleLoader = defaultLocaleLoader;
+
+/**
+ * Override the locale loader. Used by tests (where fetch/runtime messaging is
+ * unavailable) to supply locale bundles directly.
+ */
+export function setLocaleLoader(loader: LocaleLoader | null): void {
+	localeLoader = loader ?? defaultLocaleLoader;
+}
+
+/** Test-only: clear the in-memory locale cache and reset current language. */
+export function __resetLocaleCacheForTests(): void {
+	for (const key of Object.keys(loadedMessages)) {
+		delete loadedMessages[key];
+	}
+	currentLanguage = null;
+}
+
+/**
+ * Loads a locale bundle into the module cache if not already present.
+ * Returns the cached bundle (or null if loading failed).
+ */
+async function ensureLocaleLoaded(code: string): Promise<MessageBundle | null> {
+	if (loadedMessages[code]) {
+		return loadedMessages[code];
+	}
+	const bundle = await localeLoader(code);
+	if (bundle) {
+		loadedMessages[code] = bundle;
+	}
+	return bundle;
+}
+
 // Return raw values, translation will be handled by the i18n system
 export function getAvailableLanguages(): { code: string; name: string }[] {
 	return [
@@ -131,6 +225,10 @@ export function isChineseUILanguage(): boolean {
 
 export async function setLanguage(language: string): Promise<void> {
 	await setLocalStorage('language', language);
+	// Load the newly selected language so the current page re-translates
+	// correctly (settings.ts re-runs setupLanguageAndDirection + translatePage
+	// after switching, without a full page reload).
+	await initializeI18n();
 	// Reload all extension pages to apply the new language
 	const extensionPages = await browser.extension.getViews();
 	extensionPages.forEach(page => {
@@ -158,63 +256,56 @@ export async function initializeI18n() {
 	const { code } = await getEffectiveLanguage();
 	currentLanguage = code;
 	setDayjsLocale(code);
+	// Load the effective language and English fallback into the module cache so
+	// getMessage() can resolve strings synchronously. English is always loaded
+	// as the fallback for missing keys. Failures fall back to browser.i18n.
+	await Promise.all([
+		ensureLocaleLoaded(code),
+		code !== 'en' ? ensureLocaleLoaded('en') : Promise.resolve(loadedMessages['en'] ?? null),
+	]);
 }
 
 export function getMessage(messageName: string, substitutions?: string | string[]): string {
 	try {
-		// Load messages for the current language
-		const messages = require(`../_locales/${currentLanguage || 'en'}/messages.json`);
-		const messageObj = messages[messageName];
+		// Apply $1.. substitutions and $name$ placeholders to a message entry.
+		const render = (messageObj: MessageEntry): string => {
+			let text = messageObj.message;
+			if (substitutions) {
+				const subsArray = Array.isArray(substitutions) ? substitutions : [substitutions];
+				subsArray.forEach((sub, index) => {
+					text = text.replace(`$${index + 1}`, sub);
+				});
+			}
+			if (messageObj.placeholders) {
+				Object.entries(messageObj.placeholders).forEach(([key, value]) => {
+					const placeholder = `$${key}$`;
+					const content = (value as { content: string }).content;
+					text = text.replace(placeholder, content);
+				});
+			}
+			return text;
+		};
+
+		// Read messages for the current language from the in-memory cache.
+		const code = currentLanguage || 'en';
+		const messages = loadedMessages[code];
+		const messageObj = messages ? messages[messageName] : undefined;
 
 		if (!messageObj) {
 			// If message not found in current language, try English
-			if (currentLanguage !== 'en') {
-				const enMessages = require('../_locales/en/messages.json');
-				const enMessageObj = enMessages[messageName];
+			if (code !== 'en') {
+				const enMessages = loadedMessages['en'];
+				const enMessageObj = enMessages ? enMessages[messageName] : undefined;
 				if (enMessageObj) {
-					let text = enMessageObj.message;
-					// Handle substitutions and placeholders for English fallback
-					if (substitutions) {
-						const subsArray = Array.isArray(substitutions) ? substitutions : [substitutions];
-						subsArray.forEach((sub, index) => {
-							text = text.replace(`$${index + 1}`, sub);
-						});
-					}
-					if (enMessageObj.placeholders) {
-						Object.entries(enMessageObj.placeholders).forEach(([key, value]) => {
-							const placeholder = `$${key}$`;
-							const content = (value as { content: string }).content;
-							text = text.replace(placeholder, content);
-						});
-					}
-					return text;
+					return render(enMessageObj);
 				}
 			}
 			return browser.i18n.getMessage(messageName, substitutions) || messageName;
 		}
 
-		let text = messageObj.message;
-
-		// Handle substitutions first
-		if (substitutions) {
-			const subsArray = Array.isArray(substitutions) ? substitutions : [substitutions];
-			subsArray.forEach((sub, index) => {
-				text = text.replace(`$${index + 1}`, sub);
-			});
-		}
-
-		// Handle placeholders if they exist
-		if (messageObj.placeholders) {
-			Object.entries(messageObj.placeholders).forEach(([key, value]) => {
-				const placeholder = `$${key}$`;
-				const content = (value as { content: string }).content;
-				text = text.replace(placeholder, content);
-			});
-		}
-
-		return text;
+		return render(messageObj);
 	} catch (error) {
-		console.warn(`Failed to load messages for language ${currentLanguage}`, error);
+		console.warn(`Failed to resolve message for language ${currentLanguage}`, error);
 		return browser.i18n.getMessage(messageName, substitutions) || messageName;
 	}
 }

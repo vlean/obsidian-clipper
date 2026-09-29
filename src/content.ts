@@ -22,6 +22,7 @@ import {
 import { registerHighlightRenderHook } from './utils/highlighter-overlays';
 import { isOutlineConfigured } from './utils/outline-service';
 import { OUTLINE_API_KEY_STORAGE_KEY } from './utils/storage-utils';
+import { initializeI18n } from './utils/i18n';
 
 declare global {
 	interface Window {
@@ -489,6 +490,14 @@ declare global {
 	}
 
 	async function initializeHighlighter() {
+		// Load UI translations before rendering any toolbar/overlay/toast text.
+		// In a content script this asks the background page for the locale JSON
+		// (see getLocaleMessages). Failures fall back to English/native strings
+		// inside getMessage, so this must never throw.
+		await initializeI18n().catch((error) => {
+			console.debug('[Obsidian Clipper] i18n init failed, using fallback strings:', error);
+		});
+
 		await loadSettings();
 
 		if (generalSettings.alwaysShowHighlights) {
