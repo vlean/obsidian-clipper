@@ -640,6 +640,14 @@
 	"outlineConnectToLoad": {
 		"message": "Connect to load collections"
 	},
+	"outlineDefaultCollection": {
+		"message": "Default ($1)",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"outlineDescription": {
 		"message": "Save clipped pages as documents in Outline. The API key is stored only on this device and is never synced or exported."
 	},
@@ -1128,6 +1136,9 @@
 	},
 	"templateName": {
 		"message": "Template name"
+	},
+	"templateOutlineCollectionDescription": {
+		"message": "Outline collection for documents clipped with this template."
 	},
 	"templateProperties": {
 		"message": "Properties"

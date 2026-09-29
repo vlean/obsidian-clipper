@@ -5,7 +5,7 @@ import { getMessage } from '../utils/i18n';
 import { debounce } from '../utils/debounce';
 import { OutlineCollection, getOutlineErrorMessageKey, normalizeOutlineBaseUrl } from '../utils/outline-client';
 import { OUTLINE_ACTIONS, OutlineTestConnectionResponse } from '../utils/outline-service';
-import { OutlineSettings } from '../types/types';
+import { OutlineSettings, Template } from '../types/types';
 
 function saveOutlineSettings(changes: Partial<OutlineSettings>): Promise<void> {
 	return saveSettings({ outline: { ...generalSettings.outline, ...changes } });
@@ -120,6 +120,7 @@ export async function initializeOutlineSettings(): Promise<void> {
 			}
 
 			setStatus(getMessage('outlineConnectedAs', [response.userName, response.teamName]));
+			templateCollectionsCache = Promise.resolve(response.collections);
 			renderCollectionOptions(collectionSelect, response.collections);
 
 			// Keep the cached name in sync, or auto-select when there's only one collection
@@ -138,4 +139,59 @@ export async function initializeOutlineSettings(): Promise<void> {
 			connectButton.disabled = false;
 		}
 	});
+}
+
+// Collections fetched for the template editor, shared across template switches
+let templateCollectionsCache: Promise<OutlineCollection[] | null> | null = null;
+
+function fetchCollectionsForTemplates(): Promise<OutlineCollection[] | null> {
+	if (!templateCollectionsCache) {
+		templateCollectionsCache = (browser.runtime.sendMessage({ action: OUTLINE_ACTIONS.testConnection }) as Promise<OutlineTestConnectionResponse | undefined>)
+			.then(response => (response && response.success ? response.collections : null))
+			.catch(() => null)
+			.then(collections => {
+				// Allow a retry next time if the lookup failed
+				if (collections === null) templateCollectionsCache = null;
+				return collections;
+			});
+	}
+	return templateCollectionsCache;
+}
+
+/**
+ * Fills the template editor's Outline collection picker. The picker is only
+ * shown once Outline has a default collection configured.
+ */
+export function populateTemplateOutlineCollection(template: Template): void {
+	const container = document.getElementById('template-outline-collection-container');
+	const select = document.getElementById('template-outline-collection') as HTMLSelectElement | null;
+	if (!container || !select) return;
+
+	const defaultCollection = generalSettings.outline?.collectionName || generalSettings.outline?.collectionId;
+	container.hidden = !generalSettings.outline?.collectionId;
+	if (container.hidden) return;
+
+	const render = (collections: OutlineCollection[] | null) => {
+		// The user may have switched templates while collections were loading
+		if (select.dataset.templateId !== template.id) return;
+		select.textContent = '';
+		const addOption = (value: string, label: string) => {
+			const option = document.createElement('option');
+			option.value = value;
+			option.textContent = label;
+			select.appendChild(option);
+		};
+		addOption('', getMessage('outlineDefaultCollection', defaultCollection || ''));
+		const list = collections ?? [];
+		for (const collection of list) addOption(collection.id, collection.name);
+		// Keep a saved collection selectable even if it's not in the list (offline or no access)
+		if (template.outlineCollectionId && !list.some(c => c.id === template.outlineCollectionId)) {
+			addOption(template.outlineCollectionId, template.outlineCollectionName || template.outlineCollectionId);
+		}
+		select.value = template.outlineCollectionId || '';
+	};
+
+	select.dataset.templateId = template.id;
+	render(null);
+	fetchCollectionsForTemplates().then(render);
 }

@@ -11,6 +11,7 @@ import { updatePromptContextVisibility } from './interpreter-settings';
 import { showSettingsSection } from './settings-section-ui';
 import { updatePropertyType } from './property-types-manager';
 import { getMessage } from '../utils/i18n';
+import { populateTemplateOutlineCollection } from './outline-settings';
 import {
 	parse,
 	standardFilterMetadata,
@@ -276,6 +277,8 @@ export function showTemplateEditor(template: Template | null): void {
 		});
 		vaultSelect.value = editingTemplate.vault || '';
 	}
+
+	populateTemplateOutlineCollection(editingTemplate);
 
 	updateUrl('templates', editingTemplate.id);
 	updatePromptContextVisibility();
@@ -568,6 +571,16 @@ export function updateTemplateFromForm(): void {
 
 	const vaultSelect = document.getElementById('template-vault') as HTMLSelectElement;
 	if (vaultSelect) template.vault = vaultSelect.value || undefined;
+
+	const outlineCollectionSelect = document.getElementById('template-outline-collection') as HTMLSelectElement | null;
+	const outlineCollectionContainer = document.getElementById('template-outline-collection-container');
+	// Only touch the fields while the picker is shown (Outline is configured)
+	if (outlineCollectionSelect && outlineCollectionContainer && !outlineCollectionContainer.hidden) {
+		template.outlineCollectionId = outlineCollectionSelect.value || undefined;
+		template.outlineCollectionName = outlineCollectionSelect.value
+			? outlineCollectionSelect.selectedOptions[0]?.textContent || undefined
+			: undefined;
+	}
 
 	hasUnsavedChanges = true;
 }

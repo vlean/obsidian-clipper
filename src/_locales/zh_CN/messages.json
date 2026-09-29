@@ -640,6 +640,14 @@
 	"outlineConnectToLoad": {
 		"message": "连接后加载集合"
 	},
+	"outlineDefaultCollection": {
+		"message": "默认（$1）",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
 	"outlineDescription": {
 		"message": "将剪藏的页面保存为 Outline 文档。API 密钥仅保存在本设备上，不会同步或导出。"
 	},
@@ -1128,6 +1136,9 @@
 	},
 	"templateName": {
 		"message": "模板名称"
+	},
+	"templateOutlineCollectionDescription": {
+		"message": "使用此模板剪藏的 Outline 文档所在的集合。"
 	},
 	"templateProperties": {
 		"message": "属性"

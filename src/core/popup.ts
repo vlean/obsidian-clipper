@@ -1431,6 +1431,7 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			behavior,
 			sourceUrl: tabInfo.url,
 			forceCreate,
+			collectionId: currentTemplate.outlineCollectionId || undefined,
 		}) as OutlineSaveDocumentResponse | undefined;
 
 		if (!response || !response.success) {
@@ -1441,7 +1442,10 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			throw new Error(response?.error || 'Outline save failed');
 		}
 
-		await incrementStat('addToOutline', generalSettings.outline.collectionName, '', tabInfo.url, tabInfo.title);
+		const collectionName = currentTemplate.outlineCollectionId
+			? (currentTemplate.outlineCollectionName || currentTemplate.outlineCollectionId)
+			: generalSettings.outline.collectionName;
+		await incrementStat('addToOutline', collectionName, '', tabInfo.url, tabInfo.title);
 
 		if (clipButton) {
 			clipButton.textContent = getMessage(OUTLINE_SAVED_MESSAGE[response.mode] ?? 'savedToOutline');

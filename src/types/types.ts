@@ -9,6 +9,10 @@ export interface Template {
 	triggers?: string[];
 	vault?: string;
 	context?: string;
+	/** Outline collection for this template; falls back to the default collection */
+	outlineCollectionId?: string;
+	/** Cached collection name, for display only */
+	outlineCollectionName?: string;
 }
 
 export interface Property {
