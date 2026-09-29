@@ -258,6 +258,8 @@ function saveSettingsFromForm(): void {
 	const highlighterToggle = document.getElementById('highlighter-toggle') as HTMLInputElement;
 	const alwaysShowHighlightsToggle = document.getElementById('highlighter-visibility') as HTMLInputElement;
 	const highlightBehaviorSelect = document.getElementById('highlighter-behavior') as HTMLSelectElement;
+	const selectionToolbarToggle = document.getElementById('selection-toolbar-toggle') as HTMLInputElement;
+	const showHighlightNotesToggle = document.getElementById('show-highlight-notes-toggle') as HTMLInputElement;
 
 	const updatedSettings = {
 		...generalSettings, // Keep existing settings
@@ -268,7 +270,9 @@ function saveSettingsFromForm(): void {
 		silentOpen: silentOpenToggle?.checked ?? generalSettings.silentOpen,
 		highlighterEnabled: highlighterToggle?.checked ?? generalSettings.highlighterEnabled,
 		alwaysShowHighlights: alwaysShowHighlightsToggle?.checked ?? generalSettings.alwaysShowHighlights,
-		highlightBehavior: highlightBehaviorSelect?.value ?? generalSettings.highlightBehavior
+		highlightBehavior: highlightBehaviorSelect?.value ?? generalSettings.highlightBehavior,
+		selectionToolbar: selectionToolbarToggle?.checked ?? generalSettings.selectionToolbar,
+		showHighlightNotes: showHighlightNotesToggle?.checked ?? generalSettings.showHighlightNotes
 	};
 
 	saveSettings(updatedSettings);
@@ -425,6 +429,14 @@ function initializeHighlighterSettings(): void {
 
 	initializeSettingToggle('highlighter-visibility', generalSettings.alwaysShowHighlights, (checked) => {
 		saveSettings({ ...generalSettings, alwaysShowHighlights: checked });
+	});
+
+	initializeSettingToggle('selection-toolbar-toggle', generalSettings.selectionToolbar, (checked) => {
+		saveSettings({ ...generalSettings, selectionToolbar: checked });
+	});
+
+	initializeSettingToggle('show-highlight-notes-toggle', generalSettings.showHighlightNotes, (checked) => {
+		saveSettings({ ...generalSettings, showHighlightNotes: checked });
 	});
 
 	const highlightBehaviorSelect = document.getElementById('highlighter-behavior') as HTMLSelectElement;

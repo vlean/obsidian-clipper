@@ -47,6 +47,9 @@
 	"alwaysShowHighlightsDescription": {
 		"message": "加载页面时显示已保存的高亮内容。关闭此选项则仅在高亮模式激活时显示高亮。"
 	},
+	"annotate": {
+		"message": "批注"
+	},
 	"apiKeyMissing": {
 		"message": "无 API 密钥"
 	},
@@ -268,6 +271,9 @@
 	"error": {
 		"message": "错误"
 	},
+	"excerptToDaily": {
+		"message": "摘录到日记"
+	},
 	"excerptToOutlineDaily": {
 		"message": "摘录到 Outline 今日日记"
 	},
@@ -377,6 +383,9 @@
 	},
 	"helpDescription": {
 		"message": "了解如何使用 Web Clipper 并获取故障排除帮助。"
+	},
+	"highlight": {
+		"message": "高亮"
 	},
 	"highlighter": {
 		"message": "高亮"
@@ -1249,6 +1258,12 @@
 	"searchVariables": {
 		"message": "搜索变量..."
 	},
+	"selectionToolbar": {
+		"message": "划词工具条"
+	},
+	"selectionToolbarDescription": {
+		"message": "选中文字后显示高亮、批注、摘录按钮，无需进入高亮模式。"
+	},
 	"selectProvider": {
 		"message": "选择一个提供商"
 	},
@@ -1296,6 +1311,12 @@
 	},
 	"showActionsDescription": {
 		"message": "允许从剪藏器菜单查看页面变量。有助于查看模板中可用的变量。"
+	},
+	"showHighlightNotes": {
+		"message": "在网页上显示批注"
+	},
+	"showHighlightNotesDescription": {
+		"message": "在网页上每条批注高亮旁显示一个批注气泡。"
 	},
 	"showPageVariables": {
 		"message": "显示页面变量"

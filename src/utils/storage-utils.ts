@@ -70,6 +70,8 @@ export let generalSettings: Settings = {
 	highlighterEnabled: true,
 	alwaysShowHighlights: false,
 	highlightBehavior: 'highlight-inline',
+	selectionToolbar: true,
+	showHighlightNotes: true,
 	showMoreActionsButton: false,
 	interpreterModel: '',
 	models: [],
@@ -132,6 +134,8 @@ interface StorageData {
 		highlighterEnabled?: boolean;
 		alwaysShowHighlights?: boolean;
 		highlightBehavior?: string;
+		selectionToolbar?: boolean;
+		showHighlightNotes?: boolean;
 	};
 	reader_settings?: {
 		fontSize?: number;
@@ -188,6 +192,8 @@ export async function loadSettings(): Promise<Settings> {
 		highlighterEnabled: true,
 		alwaysShowHighlights: true,
 		highlightBehavior: 'highlight-inline',
+		selectionToolbar: true,
+		showHighlightNotes: true,
 		interpreterModel: '',
 		models: [],
 		providers: [],
@@ -254,6 +260,8 @@ export async function loadSettings(): Promise<Settings> {
 		highlighterEnabled: data.highlighter_settings?.highlighterEnabled ?? defaultSettings.highlighterEnabled,
 		alwaysShowHighlights: data.highlighter_settings?.alwaysShowHighlights ?? defaultSettings.alwaysShowHighlights,
 		highlightBehavior: data.highlighter_settings?.highlightBehavior ?? defaultSettings.highlightBehavior,
+		selectionToolbar: data.highlighter_settings?.selectionToolbar ?? defaultSettings.selectionToolbar,
+		showHighlightNotes: data.highlighter_settings?.showHighlightNotes ?? defaultSettings.showHighlightNotes,
 		interpreterModel: data.interpreter_settings?.interpreterModel || defaultSettings.interpreterModel,
 		models: sanitizedModels,
 		providers: sanitizedProviders,
@@ -308,7 +316,9 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 		highlighter_settings: {
 			highlighterEnabled: generalSettings.highlighterEnabled,
 			alwaysShowHighlights: generalSettings.alwaysShowHighlights,
-			highlightBehavior: generalSettings.highlightBehavior
+			highlightBehavior: generalSettings.highlightBehavior,
+			selectionToolbar: generalSettings.selectionToolbar,
+			showHighlightNotes: generalSettings.showHighlightNotes
 		},
 		interpreter_settings: {
 			interpreterModel: generalSettings.interpreterModel,

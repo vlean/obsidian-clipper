@@ -15,6 +15,8 @@ export const generalSettings: Settings = {
 	highlighterEnabled: false,
 	alwaysShowHighlights: false,
 	highlightBehavior: 'no-highlights',
+	selectionToolbar: false,
+	showHighlightNotes: false,
 	showMoreActionsButton: false,
 	interpreterModel: '',
 	models: [],

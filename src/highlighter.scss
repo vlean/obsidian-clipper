@@ -442,3 +442,156 @@ body.obsidian-highlighter-active {
 		transform: scale(0.96);
 	}
 }
+
+// --- Selection toolbar (Feature C1) ---
+//
+// Floating toolbar shown after a text selection (outside highlighter mode).
+// Isolated palette + explicit resets because it lives inside arbitrary page
+// CSS. Dark by default; a light variant kicks in under prefers-color-scheme.
+.obsidian-selection-toolbar {
+	position: absolute;
+	display: none;
+	align-items: center;
+	gap: 2px;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 3px;
+	background: #262626;
+	color: #f0f0f0;
+	border: 1px solid #424242;
+	border-radius: 10px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+	font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+	z-index: 999999999;
+	pointer-events: auto;
+	user-select: none;
+	white-space: nowrap;
+
+	.obsidian-selection-toolbar-button {
+		all: unset;
+		box-sizing: border-box;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 9px;
+		border-radius: 7px;
+		font-size: 12px;
+		font-weight: 500;
+		line-height: 1;
+		color: #f0f0f0;
+		background: transparent;
+		cursor: pointer;
+
+		.obsidian-selection-toolbar-icon {
+			display: inline-flex;
+			align-items: center;
+
+			svg {
+				width: 14px;
+				height: 14px;
+				mix-blend-mode: normal !important;
+				margin: 0 !important;
+			}
+		}
+
+		&:focus-visible {
+			outline: 2px solid #8a5cf5;
+			outline-offset: 1px;
+		}
+	}
+
+	@media (hover: hover) {
+		.obsidian-selection-toolbar-button:hover {
+			background: #3a3a3a;
+		}
+	}
+
+	@media (max-width: 769px) {
+		.obsidian-selection-toolbar-button {
+			font-size: 15px;
+			padding: 8px 12px;
+		}
+	}
+
+	@media (prefers-color-scheme: light) {
+		background: #ffffff;
+		color: #1f1f1f;
+		border-color: #e0e0e0;
+
+		.obsidian-selection-toolbar-button {
+			color: #1f1f1f;
+		}
+
+		@media (hover: hover) {
+			.obsidian-selection-toolbar-button:hover {
+				background: #f0f0f0;
+			}
+		}
+	}
+}
+
+// --- Visible note bubbles (Feature C2) ---
+//
+// One compact bubble per annotated highlight group, anchored after the
+// highlight. Absolute overlay: must not affect page layout, and only the
+// bubble itself is clickable (the layer is pointer-events:none).
+#obsidian-note-bubble-layer {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 0;
+	height: 0;
+	margin: 0;
+	padding: 0;
+	pointer-events: none;
+	z-index: 999999997;
+}
+
+.obsidian-note-bubble {
+	all: unset;
+	box-sizing: border-box;
+	position: absolute;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+	overflow: hidden;
+	max-width: 260px;
+	padding: 5px 8px;
+	background: rgba(255, 233, 153, 0.92);
+	color: #2b2b2b;
+	border: 1px solid rgba(200, 160, 40, 0.6);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+	font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+	font-size: 12px;
+	line-height: 1.35;
+	text-align: left;
+	white-space: normal;
+	word-break: break-word;
+	cursor: pointer;
+	pointer-events: auto;
+
+	&:focus-visible {
+		outline: 2px solid #8a5cf5;
+		outline-offset: 1px;
+	}
+
+	@media (hover: hover) {
+		&:hover {
+			background: rgba(255, 224, 120, 0.98);
+		}
+	}
+
+	@media (prefers-color-scheme: dark) {
+		background: rgba(90, 78, 40, 0.92);
+		color: #f2e9cf;
+		border-color: rgba(180, 150, 60, 0.5);
+
+		@media (hover: hover) {
+			&:hover {
+				background: rgba(110, 96, 50, 0.98);
+			}
+		}
+	}
+}

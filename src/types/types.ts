@@ -115,6 +115,10 @@ export interface Settings {
 	highlighterEnabled: boolean;
 	alwaysShowHighlights: boolean;
 	highlightBehavior: string;
+	/** Show a floating highlight/annotate/excerpt toolbar after a text selection, without entering highlighter mode */
+	selectionToolbar: boolean;
+	/** Render a visible note bubble on the page for each annotated highlight */
+	showHighlightNotes: boolean;
 	interpreterModel?: string;
 	models: ModelConfig[];
 	providers: Provider[];

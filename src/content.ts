@@ -13,6 +13,15 @@ import { debugLog } from './utils/debug';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './utils/iframe-resize';
 import { parseForClip } from './utils/clip-utils';
 import { showPageToast } from './utils/page-toast';
+import {
+	maybeShowSelectionToolbar,
+	renderNoteBubbles,
+	updateSelectionToolbarSettings,
+	setOutlineConfiguredForToolbar,
+} from './utils/selection-toolbar-ui';
+import { registerHighlightRenderHook } from './utils/highlighter-overlays';
+import { isOutlineConfigured } from './utils/outline-service';
+import { OUTLINE_API_KEY_STORAGE_KEY } from './utils/storage-utils';
 
 declare global {
 	interface Window {
@@ -218,6 +227,14 @@ declare global {
 				console.error('Failed to show page toast:', err);
 				sendResponse({ success: false, error: (err as Error).message });
 			}
+			return true;
+		}
+
+		if (request.action === "showSelectionToolbar") {
+			ensureHighlighterCSS().then(() => {
+				maybeShowSelectionToolbar();
+			});
+			sendResponse({ success: true });
 			return true;
 		}
 
@@ -485,7 +502,48 @@ declare global {
 		await highlighter.loadHighlights();
 		highlighter.setPageTitle(document.title);
 		updateHasHighlights();
+
+		// Selection toolbar (C1) + visible note bubbles (C2) configuration.
+		await refreshToolbarConfig();
+		// Redraw note bubbles whenever highlights render or reposition.
+		registerHighlightRenderHook(() => renderNoteBubbles());
+		renderNoteBubbles();
 	}
+
+	// Mirror the toolbar-relevant settings from sync storage and detect whether
+	// Outline is configured (so the excerpt button only appears when usable).
+	async function refreshToolbarConfig() {
+		try {
+			const syncData = await browser.storage.sync.get('highlighter_settings');
+			const hs = (syncData.highlighter_settings || {}) as {
+				highlighterEnabled?: boolean;
+				selectionToolbar?: boolean;
+				showHighlightNotes?: boolean;
+			};
+			updateSelectionToolbarSettings({
+				highlighterEnabled: hs.highlighterEnabled,
+				selectionToolbar: hs.selectionToolbar,
+				showHighlightNotes: hs.showHighlightNotes,
+			});
+		} catch { /* keep defaults */ }
+		try {
+			const apiKeyResult = await browser.storage.local.get(OUTLINE_API_KEY_STORAGE_KEY);
+			const apiKey = apiKeyResult[OUTLINE_API_KEY_STORAGE_KEY] as string | undefined;
+			setOutlineConfiguredForToolbar(isOutlineConfigured(generalSettings.outline, apiKey));
+		} catch { /* leave as-is */ }
+	}
+
+	// React to settings changes (toolbar/notes toggles, Outline config) live.
+	browser.storage.onChanged.addListener((changes, areaName) => {
+		if (areaName === 'sync' && (changes.highlighter_settings || changes.outline_settings)) {
+			// generalSettings.outline is refreshed via loadSettings elsewhere;
+			// re-read here so the excerpt button and bubbles reflect changes.
+			loadSettings().then(() => refreshToolbarConfig()).then(() => renderNoteBubbles());
+		}
+		if (areaName === 'local' && changes[OUTLINE_API_KEY_STORAGE_KEY]) {
+			refreshToolbarConfig();
+		}
+	});
 
 	// A ping should only report ready after settings and saved highlights have
 	// finished loading. This keeps the first lazy-loaded action from racing

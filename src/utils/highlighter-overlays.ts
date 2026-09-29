@@ -21,6 +21,24 @@ let touchStartX: number = 0;
 let touchStartY: number = 0;
 let isTouchMoved: boolean = false;
 
+// Callbacks fired after highlights are (re)rendered or repositioned. The
+// content script registers one to redraw the visible note bubbles (Feature C2)
+// in lockstep with the highlights they annotate. Kept here (not in
+// highlighter.ts) so the reader bundle, which also imports overlays, shares it.
+type RenderHook = () => void;
+const renderHooks = new Set<RenderHook>();
+export function registerHighlightRenderHook(hook: RenderHook): void {
+	renderHooks.add(hook);
+}
+export function unregisterHighlightRenderHook(hook: RenderHook): void {
+	renderHooks.delete(hook);
+}
+export function fireHighlightRenderHooks(): void {
+	for (const hook of renderHooks) {
+		try { hook(); } catch (e) { console.error('[Obsidian Clipper] highlight render hook failed:', e); }
+	}
+}
+
 const NOTE_EDITOR_CLASS = 'obsidian-highlight-note-editor';
 
 const IGNORED_BOUNDARY_SELECTOR =
@@ -465,6 +483,32 @@ function getHighlightBounds(id: string): HighlightBounds | null {
 	return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
 }
 
+// Viewport-relative client rects for a rendered highlight, used by the note
+// bubble layer to anchor a bubble after the highlight's end. Text highlights
+// return each line rect (from their CSS.highlights Range); element highlights
+// return the single overlay rect. Empty when the highlight isn't rendered.
+export function getHighlightClientRects(id: string): { left: number; top: number; right: number; bottom: number; width: number; height: number }[] {
+	const out: { left: number; top: number; right: number; bottom: number; width: number; height: number }[] = [];
+	const ranges = textHighlightRanges.get(id);
+	if (ranges && ranges.length > 0) {
+		for (const range of ranges) {
+			const rects = range.getClientRects();
+			for (let i = 0; i < rects.length; i++) {
+				const r = rects[i];
+				out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+			}
+		}
+		if (out.length > 0) return out;
+	}
+	const overlay = Array.from(document.querySelectorAll<HTMLElement>('.obsidian-highlight-overlay'))
+		.find(el => el.dataset.highlightId === id);
+	if (overlay) {
+		const r = overlay.getBoundingClientRect();
+		out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+	}
+	return out;
+}
+
 function showHighlightDeleteButtonForText(id: string): void {
 	const bounds = getHighlightBounds(id);
 	if (bounds) positionDeleteButton(id, (bounds.left + bounds.right) / 2, bounds.top);
@@ -851,7 +895,10 @@ function updateHighlightOverlayPositions() {
 }
 
 const throttledUpdateHighlights = throttle(() => {
-	if (!isApplyingHighlights) updateHighlightOverlayPositions();
+	if (!isApplyingHighlights) {
+		updateHighlightOverlayPositions();
+		fireHighlightRenderHooks();
+	}
 }, 100);
 
 window.addEventListener('resize', () => { throttledUpdateHighlights(); hideHighlightDeleteButton(); });

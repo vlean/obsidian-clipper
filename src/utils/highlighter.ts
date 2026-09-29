@@ -8,6 +8,7 @@ import {
 	handleTouchMove,
 	syncHoverListener,
 	markHighlightJustCreated,
+	fireHighlightRenderHooks,
 } from './highlighter-overlays';
 import { detectBrowser, addBrowserClassToHtml } from './browser-detection';
 import dayjs from 'dayjs';
@@ -1080,6 +1081,7 @@ export function applyHighlights() {
 	lastAppliedVersion = highlightsVersion;
 	isApplyingHighlights = false;
 	syncHoverListener();
+	fireHighlightRenderHooks();
 }
 
 // Apply, save, and update UI after highlight changes.

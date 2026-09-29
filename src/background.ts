@@ -484,6 +484,26 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			return true;
 		}
 
+		// The content-loader detected a settled text selection and wants the
+		// full content script to render the selection toolbar. Ensure the
+		// content script is loaded, then forward the request so it re-validates
+		// its guards and shows the toolbar.
+		if (typedRequest.action === 'requestSelectionToolbar') {
+			const tabId = sender.tab?.id;
+			if (!tabId) {
+				sendResponse({ success: false });
+				return true;
+			}
+			ensureContentScriptLoadedInBackground(tabId)
+				.then(() => browser.tabs.sendMessage(tabId, { action: 'showSelectionToolbar' }))
+				.then(() => sendResponse({ success: true }))
+				.catch((error) => sendResponse({
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				}));
+			return true;
+		}
+
 		if (typedRequest.action === 'copy-to-clipboard' && typedRequest.text) {
 			// Use content script to copy to clipboard
 			browser.tabs.query({active: true, currentWindow: true}).then(async (tabs) => {
