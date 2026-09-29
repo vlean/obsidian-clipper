@@ -120,9 +120,9 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 			? async (text: string, documentId: string): Promise<string> => {
 				try {
 					const state = await getOutlineDocState(documentId);
-					const result = await uploadOutlineImages(config, text, { documentId, attachments: state.attachments });
+					const result = await uploadOutlineImages(config, text, { documentId, attachments: state.uploads });
 					images = { uploaded: result.uploaded, reused: result.reused, failed: result.failed, skipped: result.skipped };
-					if (result.uploaded > 0) await updateOutlineDocState(documentId, { attachments: result.attachments });
+					if (result.uploaded > 0) await updateOutlineDocState(documentId, { uploads: result.attachments });
 					return result.text;
 				} catch (error) {
 					// Never block the clip on image handling

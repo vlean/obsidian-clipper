@@ -163,7 +163,7 @@ describe('handleOutlineMessage', () => {
 		expect(JSON.parse((fetchMock.mock.calls[2][1] as RequestInit).body as string).text)
 			.toBe('Intro\n![img](/api/attachments.redirect?id=a1)');
 		expect((localStore.outline_doc_state as any).d1).toMatchObject({
-			attachments: { 'https://cdn.example.org/a.png': '/api/attachments.redirect?id=a1' },
+			uploads: { 'https://cdn.example.org/a.png': '/api/attachments.redirect?id=a1' },
 			comments: { k1: 'c1' },
 		});
 	});
@@ -174,7 +174,7 @@ describe('handleOutlineMessage', () => {
 			'https://example.com/post': { documentId: 'd1', baseUrl: 'https://wiki.example.com', url: '', title: '', updatedAt: '' },
 		};
 		localStore.outline_doc_state = {
-			d1: { updatedAt: '', attachments: { 'https://cdn.example.org/a.png': '/att/a1' }, comments: { k1: 'old' } },
+			d1: { updatedAt: '', uploads: { 'https://cdn.example.org/a.png': '/att/a1' }, comments: { k1: 'old' } },
 		};
 		fetchMock
 			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // info

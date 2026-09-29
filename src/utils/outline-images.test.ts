@@ -130,13 +130,18 @@ describe('uploadOutlineImages', () => {
 
 describe('document sync state', () => {
 	test('reads sanitized state and defaults for unknown documents', () => {
-		const map = { d1: { updatedAt: 'x', attachments: { a: 'b', bad: 1 }, comments: {} } } as any;
-		expect(readDocState(map, 'd1')).toEqual({ updatedAt: 'x', attachments: { a: 'b' }, comments: {} });
-		expect(readDocState(map, 'missing')).toEqual({ updatedAt: '', attachments: {}, comments: {} });
+		const map = { d1: { updatedAt: 'x', uploads: { a: 'b', bad: 1 }, comments: {} } } as any;
+		expect(readDocState(map, 'd1')).toEqual({ updatedAt: 'x', uploads: { a: 'b' }, comments: {} });
+		expect(readDocState(map, 'missing')).toEqual({ updatedAt: '', uploads: {}, comments: {} });
+	});
+
+	test('ignores the legacy attachments cache, which may hold empty attachments', () => {
+		const map = { d1: { updatedAt: 'x', attachments: { 'https://x.com/a.png': '/api/attachments.redirect?id=empty' }, comments: { k: 'c' } } } as any;
+		expect(readDocState(map, 'd1')).toEqual({ updatedAt: 'x', uploads: {}, comments: { k: 'c' } });
 	});
 
 	test('drops the least recently updated documents past the cap', () => {
-		const state = (updatedAt: string) => ({ updatedAt, attachments: {}, comments: {} });
+		const state = (updatedAt: string) => ({ updatedAt, uploads: {}, comments: {} });
 		let map = withDocState({}, 'a', state('2026-01-01'), 2);
 		map = withDocState(map, 'b', state('2026-01-03'), 2);
 		map = withDocState(map, 'c', state('2026-01-02'), 2);
