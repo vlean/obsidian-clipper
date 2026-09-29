@@ -224,7 +224,7 @@ describe('handleOutlineMessage', () => {
 		});
 		expect(response).toMatchObject({ success: true, mode: 'updated', id: 'd9' });
 		expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
-			query: '"https://example.com/post"', collectionId: 'default-col', limit: 10,
+			query: 'https://example.com/post', collectionId: 'default-col', limit: 10,
 		});
 		expect((localStore.outline_documents as any)['https://example.com/post'].documentId).toBe('d9');
 	});

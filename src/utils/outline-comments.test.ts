@@ -94,6 +94,14 @@ describe('createAnchoredComment', () => {
 		]);
 	});
 
+	test('relaxes the anchor when Outline answers 404 for a missing anchor', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({ message: 'Resource not found' }, 404))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'c1' } }));
+		await expect(createAnchoredComment(config, 'doc', input, { fetchImpl })).resolves.toEqual({ id: 'c1', anchored: true });
+		expect(calls(fetchImpl)[1].body).toEqual({ documentId: 'doc', text: 'My note', anchorText: 'The key point' });
+	});
+
 	test('does not retry on non-validation errors', async () => {
 		const fetchImpl = vi.fn(async () => jsonResponse({ message: 'nope' }, 401));
 		await expect(createAnchoredComment(config, 'doc', input, { fetchImpl })).rejects.toMatchObject({ kind: 'unauthorized' });

@@ -173,7 +173,10 @@ export async function createAnchoredComment(
 			}, options);
 			return { id, anchored };
 		} catch (error) {
-			const canRelax = error instanceof OutlineApiError && error.kind === 'validation' && i < attempts.length - 1;
+			// Outline answers 404 (not 400) when the anchor text isn't in the document
+			const canRelax = error instanceof OutlineApiError
+				&& (error.kind === 'validation' || error.kind === 'notFound')
+				&& i < attempts.length - 1;
 			if (!canRelax) throw error;
 		}
 	}

@@ -502,7 +502,8 @@ export async function findOutlineDocumentBySource(
 	const result = await outlineRequest<{ data?: Array<{ document?: RawOutlineDocument & { text?: string } }> }>(
 		config,
 		'documents.search',
-		{ query: `"${sourceUrl}"`, collectionId, limit: 10 },
+		// Quoted phrase queries don't match URLs in Outline's search index; the bare URL does
+		{ query: sourceUrl, collectionId, limit: 10 },
 		options,
 	);
 	const documents = (Array.isArray(result.data) ? result.data : [])
