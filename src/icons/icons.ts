@@ -30,6 +30,7 @@ import {
 	Settings,
 	Share,
 	SquareCheckBig,
+	Star,
 	Tags,
 	Trash2,
 	X
@@ -69,6 +70,7 @@ export const icons = {
 	Settings,
 	Share,
 	SquareCheckBig,
+	Star,
 	Tags,
 	Trash2,
 	X

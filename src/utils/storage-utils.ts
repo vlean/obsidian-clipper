@@ -21,6 +21,7 @@ export const DEFAULT_OUTLINE_SETTINGS: OutlineSettings = {
 	usePublishedDate: false,
 	pathAsParent: false,
 	showClippedBadge: true,
+	starOnClip: false,
 };
 
 const FRONTMATTER_STYLES: OutlineSettings['frontmatterStyle'][] = ['table', 'callout', 'code'];
@@ -52,6 +53,7 @@ export function sanitizeOutlineSettings(raw: unknown): OutlineSettings {
 		usePublishedDate: typeof data.usePublishedDate === 'boolean' ? data.usePublishedDate : DEFAULT_OUTLINE_SETTINGS.usePublishedDate,
 		pathAsParent: typeof data.pathAsParent === 'boolean' ? data.pathAsParent : DEFAULT_OUTLINE_SETTINGS.pathAsParent,
 		showClippedBadge: typeof data.showClippedBadge === 'boolean' ? data.showClippedBadge : DEFAULT_OUTLINE_SETTINGS.showClippedBadge,
+		starOnClip: typeof data.starOnClip === 'boolean' ? data.starOnClip : DEFAULT_OUTLINE_SETTINGS.starOnClip,
 	};
 }
 

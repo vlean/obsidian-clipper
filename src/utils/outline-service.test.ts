@@ -313,3 +313,92 @@ describe('handleOutlineMessage', () => {
 		]);
 	});
 });
+
+describe('star on clip', () => {
+	test('does not star by default (setting off, no per-clip flag)', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '' });
+		expect(response).toMatchObject({ success: true, id: 'd1' });
+		expect((response as any).starred).toBeUndefined();
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual(['documents.create']);
+	});
+
+	test('stars the document after a successful save when requested', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } })) // create
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 's1' } })); // stars.create
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', star: true });
+		expect(response).toMatchObject({ success: true, id: 'd1', starred: true });
+		const calls = fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1]);
+		expect(calls).toEqual(['documents.create', 'stars.create']);
+		expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({ documentId: 'd1' });
+	});
+
+	test('stars when the setting is on even without a per-clip flag', async () => {
+		syncStore.outline_settings = { ...(syncStore.outline_settings as object), starOnClip: true };
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 's1' } }));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '' });
+		expect(response).toMatchObject({ success: true, starred: true });
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual(['documents.create', 'stars.create']);
+	});
+
+	test('an explicit star:false overrides the setting', async () => {
+		syncStore.outline_settings = { ...(syncStore.outline_settings as object), starOnClip: true };
+		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', star: false });
+		expect(response).toMatchObject({ success: true });
+		expect((response as any).starred).toBeUndefined();
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual(['documents.create']);
+	});
+
+	test('treats an already-starred validation error as success (still starred)', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }))
+			.mockResolvedValueOnce(jsonResponse({ message: 'already starred' }, 400));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', star: true });
+		expect(response).toMatchObject({ success: true, id: 'd1', starred: true });
+		expect((response as any).starError).toBeUndefined();
+	});
+
+	test('a star failure does not fail the save', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'd1', title: 'T', url: '/doc/t' } }))
+			.mockResolvedValueOnce(jsonResponse({ message: 'server exploded' }, 500));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.saveDocument, title: 'T', text: '', star: true });
+		expect(response).toMatchObject({ success: true, id: 'd1', starred: false });
+		expect((response as any).starError).toBeTruthy();
+	});
+});
+
+describe('share document', () => {
+	test('creates and publishes an unpublished share', async () => {
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'sh1', url: 'https://wiki.example.com/s/abc', published: false } }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'sh1', url: 'https://wiki.example.com/s/abc', published: true } }));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.shareDocument, documentId: 'd1' });
+		expect(response).toEqual({ success: true, url: 'https://wiki.example.com/s/abc' });
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual(['shares.create', 'shares.update']);
+		expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ documentId: 'd1' });
+	});
+
+	test('skips the update when the share is already published', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'sh1', url: 'https://wiki.example.com/s/abc', published: true } }));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.shareDocument, documentId: 'd1' });
+		expect(response).toEqual({ success: true, url: 'https://wiki.example.com/s/abc' });
+		expect(fetchMock.mock.calls.map(call => (call[0] as string).split('/api/')[1])).toEqual(['shares.create']);
+	});
+
+	test('maps a 403 to a forbidden failure', async () => {
+		fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'sharing disabled' }, 403));
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.shareDocument, documentId: 'd1' });
+		expect(response).toMatchObject({ success: false, errorKind: 'forbidden' });
+	});
+
+	test('rejects a missing document id without calling the API', async () => {
+		const response = await handleOutlineMessage({ action: OUTLINE_ACTIONS.shareDocument });
+		expect(response).toMatchObject({ success: false, errorKind: 'validation' });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});

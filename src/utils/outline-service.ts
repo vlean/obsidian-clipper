@@ -15,6 +15,8 @@ import {
 	getOutlineDocument,
 	getOutlineDocumentUrl,
 	listOutlineCollections,
+	shareOutlineDocumentPublicly,
+	starOutlineDocument,
 } from './outline-client';
 import { OUTLINE_API_KEY_STORAGE_KEY, sanitizeOutlineSettings } from './storage-utils';
 import { OutlineSettings, Template } from '../types/types';
@@ -32,6 +34,7 @@ export const OUTLINE_ACTIONS = {
 	saveDocument: 'outlineSaveDocument',
 	listCollections: 'outlineListCollections',
 	syncNotes: 'outlineSyncNotes',
+	shareDocument: 'outlineShareDocument',
 } as const;
 
 export interface OutlineFailure {
@@ -55,12 +58,26 @@ export type OutlineSaveDocumentResponse =
 		images?: OutlineImageStats;
 		/** Present when comment sync ran */
 		comments?: OutlineCommentStats;
+		/** Present when the clip requested a star; true once the document is starred */
+		starred?: boolean;
+		/** Set when starring failed for a reason other than 'already starred' */
+		starError?: string;
 	}
 	| OutlineFailure;
 
 export type OutlineSyncNotesResponse =
 	| { success: true; url: string; comments: OutlineCommentStats }
 	| OutlineFailure;
+
+export type OutlineShareDocumentResponse =
+	| { success: true; url: string }
+	| OutlineFailure;
+
+export interface OutlineShareDocumentRequest {
+	action: typeof OUTLINE_ACTIONS.shareDocument;
+	/** Document to create/publish a public share for */
+	documentId?: string;
+}
 
 export interface OutlineSyncNotesRequest {
 	action: typeof OUTLINE_ACTIONS.syncNotes;
@@ -88,6 +105,8 @@ export interface OutlineSaveDocumentRequest {
 	path?: string;
 	/** Creation date for new documents (ISO), when "use published date" is enabled */
 	createdAt?: string;
+	/** Star the document (add to sidebar) after a successful save */
+	star?: boolean;
 }
 
 function sanitizeCreatedAt(value: unknown): string | undefined {
@@ -230,12 +249,28 @@ export async function handleOutlineSaveDocument(request: OutlineSaveDocumentRequ
 			updateClippedBadgesForUrl(sourceUrl).catch(error => console.debug('Badge update failed:', error));
 		}
 
+		// Optionally star the document. This must never fail the save: a star is a
+		// convenience, and 'already starred' is reported as success by the client.
+		let starred: boolean | undefined;
+		let starError: string | undefined;
+		const shouldStar = typeof request.star === 'boolean' ? request.star : settings.starOnClip;
+		if (shouldStar) {
+			try {
+				await starOutlineDocument(config, document.id);
+				starred = true;
+			} catch (error) {
+				console.warn('Outline star failed:', error);
+				starred = false;
+				starError = error instanceof Error ? error.message : String(error);
+			}
+		}
+
 		// Mirror the Obsidian flow: open the note unless "silent open" is enabled
 		if (!silentOpen) {
 			browser.tabs.create({ url }).catch(error => console.error('Failed to open Outline document:', error));
 		}
 
-		return { success: true, id: document.id, title: document.title, url, mode, images, comments };
+		return { success: true, id: document.id, title: document.title, url, mode, images, comments, starred, starError };
 	} catch (error) {
 		console.error('Failed to save Outline document:', error);
 		return toFailure(error);
@@ -286,6 +321,30 @@ export async function handleOutlineSyncNotes(request: OutlineSyncNotesRequest): 
 }
 
 /**
+ * Creates and publishes a public share link for a document. When sharing is
+ * disabled by the workspace, Outline answers with a 403; that is surfaced with
+ * a dedicated message so the user understands it is a permissions issue rather
+ * than a transient error.
+ */
+export async function handleOutlineShareDocument(request: OutlineShareDocumentRequest): Promise<OutlineShareDocumentResponse> {
+	try {
+		const documentId = typeof request.documentId === 'string' ? request.documentId.trim() : '';
+		if (!documentId) {
+			return { success: false, errorKind: 'validation', error: 'No document to share' };
+		}
+		const { config } = await loadOutlineState();
+		const url = await shareOutlineDocumentPublicly(config, documentId);
+		if (!url) {
+			return { success: false, errorKind: 'server', error: 'Outline did not return a share URL' };
+		}
+		return { success: true, url };
+	} catch (error) {
+		console.error('Failed to share Outline document:', error);
+		return toFailure(error);
+	}
+}
+
+/**
  * Handles Outline runtime messages. Returns a promise for handled actions,
  * or null when the message isn't an Outline action.
  */
@@ -305,6 +364,8 @@ export function handleOutlineMessage(request: { action?: string } & Record<strin
 			return handleOutlineSaveDocument(request as unknown as OutlineSaveDocumentRequest);
 		case OUTLINE_ACTIONS.syncNotes:
 			return handleOutlineSyncNotes(request as unknown as OutlineSyncNotesRequest);
+		case OUTLINE_ACTIONS.shareDocument:
+			return handleOutlineShareDocument(request as unknown as OutlineShareDocumentRequest);
 		default:
 			return null;
 	}

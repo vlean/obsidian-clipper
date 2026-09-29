@@ -147,6 +147,9 @@
 	"copyAsJson": {
 		"message": "Copy as JSON"
 	},
+	"copyOutlineShareLink": {
+		"message": "Copy Outline share link"
+	},
 	"copyToClipboard": {
 		"message": "Copy to clipboard"
 	},
@@ -695,6 +698,9 @@
 	"outlineErrorRateLimited": {
 		"message": "Outline rate limit reached. Please try again in a moment."
 	},
+	"outlineErrorSharingDisabled": {
+		"message": "Sharing is disabled or not permitted for this workspace."
+	},
 	"outlineErrorUnauthorized": {
 		"message": "The Outline API key is invalid or has been revoked."
 	},
@@ -768,11 +774,29 @@
 	"outlineSelectCollection": {
 		"message": "Select a collection"
 	},
+	"outlineShareLinkCopied": {
+		"message": "Copied public link"
+	},
+	"outlineSharingLink": {
+		"message": "Creating public link…"
+	},
 	"outlineShowClippedBadge": {
 		"message": "Show a badge on already clipped pages"
 	},
 	"outlineShowClippedBadgeDescription": {
 		"message": "Show a checkmark on the toolbar icon when the current page has already been clipped to Outline."
+	},
+	"outlineStarOnClip": {
+		"message": "Star documents when clipping"
+	},
+	"outlineStarOnClipDescription": {
+		"message": "Add each clipped document to your Outline sidebar by starring it. You can turn this on or off for an individual clip from the popup."
+	},
+	"outlineStarredForClip": {
+		"message": "This document will be starred in Outline"
+	},
+	"outlineStarThisClip": {
+		"message": "Star this document in Outline"
 	},
 	"outlineSyncComments": {
 		"message": "Sync highlight notes as comments"
@@ -1112,6 +1136,9 @@
 	},
 	"save": {
 		"message": "Save"
+	},
+	"saveAndCopyOutlineShareLink": {
+		"message": "Save and copy share link"
 	},
 	"saveAsNewOutlineDocument": {
 		"message": "Save as new Outline document"

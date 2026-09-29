@@ -64,6 +64,7 @@ export const generalSettings: Settings = {
 		usePublishedDate: false,
 		pathAsParent: false,
 		showClippedBadge: true,
+		starOnClip: false,
 	},
 };
 

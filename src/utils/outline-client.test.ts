@@ -8,6 +8,8 @@ import {
 	listOutlineCollections,
 	normalizeOutlineBaseUrl,
 	outlineRequest,
+	shareOutlineDocumentPublicly,
+	starOutlineDocument,
 } from './outline-client';
 
 const config = { baseUrl: 'https://wiki.example.com', apiKey: 'ol_api_test' };
@@ -194,5 +196,55 @@ describe('ensureOutlineDocumentPath', () => {
 		const fetchImpl = vi.fn();
 		await expect(ensureOutlineDocumentPath(config, 'col', [], { fetchImpl })).resolves.toBeUndefined();
 		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+});
+
+describe('starOutlineDocument', () => {
+	test('creates a star and resolves true', async () => {
+		const fetchImpl = vi.fn(async () => jsonResponse({ data: { id: 's1' } }));
+		await expect(starOutlineDocument(config, 'doc1', { fetchImpl })).resolves.toBe(true);
+		const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url).toBe('https://wiki.example.com/api/stars.create');
+		expect(JSON.parse(init.body as string)).toEqual({ documentId: 'doc1' });
+	});
+
+	test('treats an already-starred validation error as success (false)', async () => {
+		const fetchImpl = vi.fn(async () => jsonResponse({ message: 'already starred' }, 400));
+		await expect(starOutlineDocument(config, 'doc1', { fetchImpl })).resolves.toBe(false);
+	});
+
+	test('rethrows other errors', async () => {
+		const fetchImpl = vi.fn(async () => jsonResponse({ message: 'boom' }, 500));
+		await expect(starOutlineDocument(config, 'doc1', { fetchImpl })).rejects.toBeInstanceOf(OutlineApiError);
+	});
+});
+
+describe('shareOutlineDocumentPublicly', () => {
+	test('creates then publishes an unpublished share', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'sh1', url: 'https://wiki.example.com/s/abc', published: false } }))
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'sh1', url: 'https://wiki.example.com/s/abc', published: true } }));
+		await expect(shareOutlineDocumentPublicly(config, 'doc1', { fetchImpl })).resolves.toBe('https://wiki.example.com/s/abc');
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		const [createUrl] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+		const [updateUrl, updateInit] = fetchImpl.mock.calls[1] as unknown as [string, RequestInit];
+		expect(createUrl).toBe('https://wiki.example.com/api/shares.create');
+		expect(updateUrl).toBe('https://wiki.example.com/api/shares.update');
+		expect(JSON.parse(updateInit.body as string)).toEqual({ id: 'sh1', published: true });
+	});
+
+	test('skips the update when the share is already published', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(jsonResponse({ data: { id: 'sh1', url: 'https://wiki.example.com/s/abc', published: true } }));
+		await expect(shareOutlineDocumentPublicly(config, 'doc1', { fetchImpl })).resolves.toBe('https://wiki.example.com/s/abc');
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
+	test('propagates a 403 as a forbidden OutlineApiError', async () => {
+		const fetchImpl = vi.fn(async () => jsonResponse({ message: 'sharing disabled' }, 403));
+		await expect(shareOutlineDocumentPublicly(config, 'doc1', { fetchImpl }))
+			.rejects.toMatchObject({ kind: 'forbidden' });
+		await expect(shareOutlineDocumentPublicly(config, 'doc1', { fetchImpl }))
+			.rejects.toBeInstanceOf(OutlineApiError);
 	});
 });

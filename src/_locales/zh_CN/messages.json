@@ -147,6 +147,9 @@
 	"copyAsJson": {
 		"message": "复制为 JSON"
 	},
+	"copyOutlineShareLink": {
+		"message": "复制 Outline 分享链接"
+	},
 	"copyToClipboard": {
 		"message": "复制到剪贴板"
 	},
@@ -695,6 +698,9 @@
 	"outlineErrorRateLimited": {
 		"message": "已达到 Outline 请求频率限制，请稍后重试。"
 	},
+	"outlineErrorSharingDisabled": {
+		"message": "该工作区已禁用分享或没有分享权限。"
+	},
 	"outlineErrorUnauthorized": {
 		"message": "Outline API 密钥无效或已被撤销。"
 	},
@@ -768,11 +774,29 @@
 	"outlineSelectCollection": {
 		"message": "选择集合"
 	},
+	"outlineShareLinkCopied": {
+		"message": "已复制公开分享链接"
+	},
+	"outlineSharingLink": {
+		"message": "正在创建公开链接…"
+	},
 	"outlineShowClippedBadge": {
 		"message": "为已剪藏的页面显示标记"
 	},
 	"outlineShowClippedBadgeDescription": {
 		"message": "当前页面已剪藏到 Outline 时，在工具栏图标上显示一个对勾标记。"
+	},
+	"outlineStarOnClip": {
+		"message": "剪藏时收藏文档"
+	},
+	"outlineStarOnClipDescription": {
+		"message": "通过收藏将每个剪藏的文档加入 Outline 侧边栏。你可以在弹窗中为单次剪藏单独开启或关闭此项。"
+	},
+	"outlineStarredForClip": {
+		"message": "此文档将会被收藏到 Outline"
+	},
+	"outlineStarThisClip": {
+		"message": "在 Outline 中收藏此文档"
 	},
 	"outlineSyncComments": {
 		"message": "批注同步为评论"
@@ -1112,6 +1136,9 @@
 	},
 	"save": {
 		"message": "保存"
+	},
+	"saveAndCopyOutlineShareLink": {
+		"message": "保存并复制分享链接"
 	},
 	"saveAsNewOutlineDocument": {
 		"message": "另存为新的 Outline 文档"

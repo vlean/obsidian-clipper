@@ -79,6 +79,8 @@ export interface OutlineSettings {
 	pathAsParent: boolean;
 	/** Show a badge on the toolbar icon when the current page is already clipped to Outline */
 	showClippedBadge: boolean;
+	/** Star (add to the sidebar) each document when it is clipped to Outline */
+	starOnClip: boolean;
 }
 
 export interface ReaderSettings {

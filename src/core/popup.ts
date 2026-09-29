@@ -24,8 +24,8 @@ import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { buildOutlineDocumentText, normalizeOutlineTitle } from '../utils/outline-markdown';
-import { getOutlineErrorMessageKey } from '../utils/outline-client';
-import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse, OutlineSyncNotesResponse } from '../utils/outline-service';
+import { getOutlineErrorMessageKey, OutlineErrorKind } from '../utils/outline-client';
+import { OUTLINE_ACTIONS, OutlineSaveDocumentResponse, OutlineSyncNotesResponse, OutlineShareDocumentResponse } from '../utils/outline-service';
 import { getOutlineDocumentMapping, OutlineDocumentMapping } from '../utils/outline-documents-store';
 import { isDailyBehavior, tracksSourceUrl, OutlineSaveMode } from '../utils/outline-sync';
 import { buildOutlineComments, CommentableHighlight } from '../utils/outline-comments';
@@ -395,6 +395,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 				determineMainAction();
 				initializeOutlineCollectionPicker();
+				initializeOutlineStarToggle();
 
 				const showMoreActionsButton = document.getElementById('show-variables');
 				if (showMoreActionsButton) {
@@ -1330,6 +1331,17 @@ function determineMainAction() {
 		addSecondaryAction(secondaryActions, 'syncNotesToOutline', () => handleSyncOutlineNotes());
 	};
 
+	// Offer a public share link. If the page is already clipped, share the mapped
+	// document directly; otherwise save first, then share the new document.
+	const addShareLinkAction = () => {
+		if (!outlineConfigured) return;
+		if (currentOutlineMapping) {
+			addSecondaryAction(secondaryActions, 'copyOutlineShareLink', () => handleShareOutlineLink({ save: false }));
+		} else {
+			addSecondaryAction(secondaryActions, 'saveAndCopyOutlineShareLink', () => handleShareOutlineLink({ save: true }));
+		}
+	};
+
 	// Set up actions based on saved behavior
 	switch (loadedSettings.saveBehavior) {
 		case 'copyToClipboard':
@@ -1339,6 +1351,7 @@ function determineMainAction() {
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addOutlineAction();
 			addSyncNotesAction();
+			addShareLinkAction();
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 			break;
 		case 'saveFile':
@@ -1348,6 +1361,7 @@ function determineMainAction() {
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addOutlineAction();
 			addSyncNotesAction();
+			addShareLinkAction();
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			break;
 		case 'addToOutline':
@@ -1358,6 +1372,7 @@ function determineMainAction() {
 				addSecondaryAction(secondaryActions, 'saveAsNewOutlineDocument', () => handleClipOutline({ forceCreate: true }));
 			}
 			addSyncNotesAction();
+			addShareLinkAction();
 			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
@@ -1368,6 +1383,7 @@ function determineMainAction() {
 			// Add direct actions to secondary
 			addOutlineAction();
 			addSyncNotesAction();
+			addShareLinkAction();
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 	}
@@ -1392,6 +1408,38 @@ let outlineSaveInProgress = false;
 const OUTLINE_COLLECTIONS_CACHE_KEY = 'outline_collections_cache';
 let outlineCollections: OutlineCollection[] = [];
 let outlineCollectionOverride: string | null = null;
+// One-off star choice for this clip; null means "use the setting default"
+let outlineStarOverride: boolean | null = null;
+
+function isOutlineStarActive(): boolean {
+	return outlineStarOverride ?? Boolean(generalSettings.outline?.starOnClip);
+}
+
+/** Shows and initialises the per-clip star toggle under the same conditions as the collection picker. */
+function renderOutlineStarToggle(): void {
+	const container = document.getElementById('outline-star-container');
+	const button = document.getElementById('outline-star-toggle') as HTMLButtonElement | null;
+	if (!container || !button) return;
+	const visible = loadedSettings?.saveBehavior === 'addToOutline' && Boolean(generalSettings.outline?.collectionId);
+	container.style.display = visible ? 'block' : 'none';
+	if (!visible) return;
+	const active = isOutlineStarActive();
+	button.setAttribute('aria-pressed', String(active));
+	button.classList.toggle('active', active);
+	const label = active ? getMessage('outlineStarredForClip') : getMessage('outlineStarThisClip');
+	button.title = label;
+	button.setAttribute('aria-label', label);
+}
+
+function initializeOutlineStarToggle(): void {
+	const button = document.getElementById('outline-star-toggle') as HTMLButtonElement | null;
+	if (!button) return;
+	button.addEventListener('click', () => {
+		outlineStarOverride = !isOutlineStarActive();
+		renderOutlineStarToggle();
+	});
+	renderOutlineStarToggle();
+}
 
 function getSelectedOutlineCollectionId(): string {
 	return outlineCollectionOverride
@@ -1411,6 +1459,7 @@ function getSelectedOutlineCollectionName(): string {
 function renderOutlineCollectionPicker(): void {
 	const container = document.getElementById('outline-collection-container');
 	const select = document.getElementById('outline-collection-picker') as HTMLSelectElement | null;
+	renderOutlineStarToggle();
 	if (!container || !select) return;
 	const visible = loadedSettings?.saveBehavior === 'addToOutline' && Boolean(generalSettings.outline?.collectionId);
 	container.style.display = visible ? 'block' : 'none';
@@ -1566,8 +1615,8 @@ const OUTLINE_SAVED_MESSAGE: Record<OutlineSaveMode, string> = {
 	prepended: 'updatedInOutline',
 };
 
-async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolean } = {}): Promise<void> {
-	if (!currentTemplate || outlineSaveInProgress) return;
+async function handleClipOutline({ forceCreate = false, share = false }: { forceCreate?: boolean; share?: boolean } = {}): Promise<OutlineSaveDocumentResponse | null> {
+	if (!currentTemplate || outlineSaveInProgress) return null;
 
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
 	const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
@@ -1575,11 +1624,11 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 
 	if (!noteContentField) {
 		showError('Some required fields are missing. Please try reloading the extension.');
-		return;
+		return null;
 	}
 	if (!generalSettings.outline?.collectionId) {
 		showError('outlineErrorConfig');
-		return;
+		return null;
 	}
 
 	const originalButtonText = clipButton?.textContent ?? '';
@@ -1621,6 +1670,7 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			collectionId: getSelectedOutlineCollectionId() || undefined,
 			path,
 			createdAt: getPublishedDate(generalSettings.outline, properties),
+			star: isOutlineStarActive(),
 		}) as OutlineSaveDocumentResponse | undefined;
 
 		if (!response || !response.success) {
@@ -1641,14 +1691,18 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 		if (hasWarnings) {
 			console.warn('Outline save completed with warnings:', response.images, response.comments);
 		}
+		if (tabInfo.url) {
+			// Next clip of this page updates the document
+			refreshOutlineMapping(tabInfo.url);
+		}
+		// When sharing, the caller shows feedback and controls the popup lifetime
+		if (share) {
+			return response;
+		}
 		if (clipButton) {
 			clipButton.textContent = hasWarnings
 				? getMessage('savedToOutlineWithWarnings', [String(failedImages), String(failedComments)])
 				: getMessage(OUTLINE_SAVED_MESSAGE[response.mode] ?? 'savedToOutline');
-		}
-		if (tabInfo.url) {
-			// Next clip of this page updates the document
-			refreshOutlineMapping(tabInfo.url);
 		}
 		if (!isSidePanel) {
 			setTimeout(() => window.close(), hasWarnings ? 3000 : 500);
@@ -1658,6 +1712,7 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 				clipButton.disabled = false;
 			}, 1500);
 		}
+		return response;
 	} catch (error) {
 		console.error('Error in handleClipOutline:', error);
 		if (clipButton) {
@@ -1668,6 +1723,94 @@ async function handleClipOutline({ forceCreate = false }: { forceCreate?: boolea
 			showError('outlineErrorGeneric');
 		}
 		throw error;
+	} finally {
+		outlineSaveInProgress = false;
+	}
+}
+
+/** Copies text to the clipboard, falling back to the background copy helper. */
+async function copyTextToClipboard(text: string): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(text);
+	} catch {
+		await browser.runtime.sendMessage({ action: 'copy-to-clipboard', text });
+	}
+}
+
+/** Maps a share failure to a message key, calling out disabled/permission cases. */
+function getShareErrorMessageKey(kind: OutlineErrorKind | undefined): string {
+	if (kind === 'forbidden') return 'outlineErrorSharingDisabled';
+	return getOutlineErrorMessageKey(kind);
+}
+
+/**
+ * Shares an Outline document publicly and copies the link. When no mapping
+ * exists yet, first runs the normal save (reusing handleClipOutline) and shares
+ * the resulting document. The copied link is PUBLIC.
+ */
+async function handleShareOutlineLink({ save }: { save: boolean }): Promise<void> {
+	if (outlineSaveInProgress) return;
+	const clipButton = document.getElementById('clip-btn') as HTMLButtonElement | null;
+	const originalButtonText = clipButton?.textContent ?? '';
+
+	let documentId = currentOutlineMapping?.documentId ?? '';
+	try {
+		if (save) {
+			// Reuse the save flow; it manages outlineSaveInProgress and button text itself
+			const saved = await handleClipOutline({ share: true });
+			if (!saved || !saved.success) return; // save already reported the error
+			documentId = saved.id;
+		}
+		if (!documentId) {
+			showError('outlineErrorConfig');
+			return;
+		}
+
+		outlineSaveInProgress = true;
+		if (clipButton) {
+			clipButton.disabled = true;
+			clipButton.textContent = getMessage('outlineSharingLink');
+		}
+
+		const response = await browser.runtime.sendMessage({
+			action: OUTLINE_ACTIONS.shareDocument,
+			documentId,
+		}) as OutlineShareDocumentResponse | undefined;
+
+		if (!response || !response.success) {
+			const errorKey = getShareErrorMessageKey(response?.errorKind);
+			const detail = response?.error ? ` (${response.error})` : '';
+			console.error('Outline share failed:', response);
+			if (clipButton) {
+				clipButton.textContent = originalButtonText;
+				clipButton.disabled = false;
+			}
+			showError(`${getMessage(errorKey)}${detail}`);
+			return;
+		}
+
+		await copyTextToClipboard(response.url);
+		if (clipButton) {
+			clipButton.textContent = getMessage('outlineShareLinkCopied');
+			// Keep the feedback visible long enough to read before closing/restoring
+			if (!isSidePanel) {
+				setTimeout(() => window.close(), 2000);
+			} else {
+				setTimeout(() => {
+					clipButton.textContent = originalButtonText;
+					clipButton.disabled = false;
+				}, 2000);
+			}
+		}
+	} catch (error) {
+		console.error('Error sharing Outline link:', error);
+		if (clipButton) {
+			clipButton.textContent = originalButtonText;
+			clipButton.disabled = false;
+		}
+		if (!document.body.classList.contains('has-error')) {
+			showError('outlineErrorGeneric');
+		}
 	} finally {
 		outlineSaveInProgress = false;
 	}
@@ -1763,6 +1906,8 @@ function getActionIcon(actionType: string): string {
 		case 'updateInOutline': return 'book-open';
 		case 'saveAsNewOutlineDocument': return 'file-plus';
 		case 'syncNotesToOutline': return 'rotate-cw';
+		case 'copyOutlineShareLink': return 'share';
+		case 'saveAndCopyOutlineShareLink': return 'share';
 		default: return 'plus';
 	}
 }

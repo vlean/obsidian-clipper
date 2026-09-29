@@ -462,6 +462,90 @@ export async function listOutlineComments(
 	return comments;
 }
 
+/**
+ * Stars a document for the current user (adds it to the sidebar). Repeated
+ * calls for an already-starred document answer with a validation error, which
+ * callers should treat as success. Returns true when a new star was created,
+ * false when it already existed.
+ */
+export async function starOutlineDocument(
+	config: OutlineConfig,
+	documentId: string,
+	options?: OutlineRequestOptions,
+): Promise<boolean> {
+	try {
+		await outlineRequest(config, 'stars.create', { documentId }, options);
+		return true;
+	} catch (error) {
+		// Outline rejects a duplicate star with a 400 validation error; that means
+		// the document is already starred, which is the state we wanted.
+		if (error instanceof OutlineApiError && error.kind === 'validation') {
+			return false;
+		}
+		throw error;
+	}
+}
+
+export interface OutlineShareInfo {
+	id: string;
+	/** Public share URL */
+	url: string;
+	published: boolean;
+}
+
+function toShareInfo(raw: unknown): OutlineShareInfo | null {
+	if (!raw || typeof raw !== 'object') return null;
+	const data = raw as { id?: unknown; url?: unknown; published?: unknown };
+	if (typeof data.id !== 'string' || typeof data.url !== 'string') return null;
+	return { id: data.id, url: data.url, published: Boolean(data.published) };
+}
+
+/**
+ * Creates (or returns the existing) share for a document. Outline returns the
+ * same share object when called again for the same resource with the same key.
+ */
+export async function createOutlineShare(
+	config: OutlineConfig,
+	documentId: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineShareInfo> {
+	const result = await outlineRequest<{ data?: unknown }>(config, 'shares.create', { documentId }, options);
+	const share = toShareInfo(result.data);
+	if (!share) {
+		throw new OutlineApiError('server', 'Unexpected response from shares.create');
+	}
+	return share;
+}
+
+/** Publishes a share so it can be viewed without authentication. */
+export async function publishOutlineShare(
+	config: OutlineConfig,
+	id: string,
+	options?: OutlineRequestOptions,
+): Promise<OutlineShareInfo> {
+	const result = await outlineRequest<{ data?: unknown }>(config, 'shares.update', { id, published: true }, options);
+	const share = toShareInfo(result.data);
+	if (!share) {
+		throw new OutlineApiError('server', 'Unexpected response from shares.update');
+	}
+	return share;
+}
+
+/**
+ * Shares a document publicly: creates the share (or reuses the existing one),
+ * then publishes it if it isn't already public. Returns the public share URL.
+ */
+export async function shareOutlineDocumentPublicly(
+	config: OutlineConfig,
+	documentId: string,
+	options?: OutlineRequestOptions,
+): Promise<string> {
+	const share = await createOutlineShare(config, documentId, options);
+	if (share.published) return share.url;
+	const published = await publishOutlineShare(config, share.id, options);
+	return published.url || share.url;
+}
+
 export interface OutlineNavigationNode {
 	id: string;
 	title: string;

@@ -124,6 +124,9 @@ export async function initializeOutlineSettings(): Promise<void> {
 	initializeSettingToggle('outline-clipped-badge-toggle', generalSettings.outline.showClippedBadge, (checked) => {
 		saveOutlineSettings({ showClippedBadge: checked });
 	});
+	initializeSettingToggle('outline-star-on-clip-toggle', generalSettings.outline.starOnClip, (checked) => {
+		saveOutlineSettings({ starOnClip: checked });
+	});
 	const frontmatterStyle = document.getElementById('outline-frontmatter-style') as HTMLSelectElement | null;
 	if (frontmatterStyle) {
 		frontmatterStyle.value = generalSettings.outline.frontmatterStyle;
